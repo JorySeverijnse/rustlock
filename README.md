@@ -7,14 +7,21 @@ A production-ready Wayland screen locker inspired by swaylock-effects.
 **This tool is under active development.** Screen lockers can cause system lockups if they malfunction. 
 
 **If the screen locker gets stuck:**
+- Type password and press **Enter** to unlock (demo mode - any password works)
 - Switch to another TTY: Press `Ctrl+Alt+F2`, login, then run `pkill -9 wayrustlock`
 - From another terminal: `pkill -9 wayrustlock` or `killall wayrustlock`
 - If screen is black/red: hard restart may be required
 
-**Always test with a timeout first:**
+**Debug logging:** Check `~/.wayrustlock.log` to see what's happening
+
+**Test with timeout first:**
 ```bash
-timeout 5 ./target/release/wayrustlock --indicator --clock
-# If stuck, system will auto-unlock after 5 seconds
+timeout 15 ./target/release/wayrustlock --indicator --clock
+```
+
+Then check the log file:
+```bash
+cat ~/.wayrustlock.log
 ```
 
 ## Features (Implemented vs Planned)

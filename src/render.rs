@@ -85,8 +85,8 @@ impl Renderer {
 
     /// Render the current frame
     pub fn render(&mut self) {
-        // Clear the surface
-        self.context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+        // Clear the surface - draw a VISIBLE color (dark gray) instead of black
+        self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
         self.context.paint().expect("Failed to clear surface");
 
         // Draw background if available
@@ -98,14 +98,8 @@ impl Renderer {
                 .paint_with_alpha(self.fade_alpha)
                 .expect("Failed to draw background");
         } else {
-            // Draw solid color background
-            let bg_color = self.tuple_to_color((0.0, 0.0, 0.0, 1.0));
-            self.context.set_source_rgba(
-                bg_color.r as f64 / 255.0,
-                bg_color.g as f64 / 255.0,
-                bg_color.b as f64 / 255.0,
-                bg_color.a as f64 / 255.0 * self.fade_alpha,
-            );
+            // Draw solid color background (dark gray visible color)
+            self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
             self.context
                 .paint()
                 .expect("Failed to draw solid background");

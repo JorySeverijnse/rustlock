@@ -10,9 +10,39 @@ mod util;
 use config::Config;
 use lock::LockManager;
 use std::error::Error;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 
+fn setup_file_logging() {
+    let log_path =
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()) + "/.wayrustlock.log";
+
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+    {
+        let _ = writeln!(file, "=== wayrustlock log ===");
+        let _ = writeln!(file, "Started at: {:?}", std::time::SystemTime::now());
+    }
+    eprintln!("Logging to: {}", log_path);
+}
+
+fn log_to_file(msg: &str) {
+    let log_path =
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()) + "/.wayrustlock.log";
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
+        let _ = writeln!(file, "[{:?}] {}", std::time::SystemTime::now(), msg);
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    setup_file_logging();
+    log_to_file("Program starting");
+
     let config = Config::load();
 
     if config.debug {
@@ -21,22 +51,26 @@ fn main() -> Result<(), Box<dyn Error>> {
             .init();
     } else {
         env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Info)
+            .filter_level(log::LevelFilter::Debug)
             .init();
     }
 
     log::info!("Starting wayrustlock v{}", env!("CARGO_PKG_VERSION"));
+    log_to_file("Starting wayrustlock");
     log::info!("Attempting to lock Wayland session...");
+    log_to_file("Attempting to lock Wayland session");
     log::warn!("WARNING: This is a screen locker. To kill it if stuck, use:");
     log::warn!("  Method 1: Switch to another TTY (Ctrl+Alt+F2) and kill the process");
     log::warn!("  Method 2: Use 'pkill -9 wayrustlock' from another terminal");
     log::warn!("  Method 3: Use 'killall wayrustlock'");
+    log_to_file("Warnings printed");
 
     let lock_manager = Arc::new(Mutex::new(LockManager::new(config.clone())));
     let ctrlc_exit = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     if let Err(e) = lock_wayland_session(config.clone(), lock_manager.clone(), ctrlc_exit) {
         log::error!("Failed to lock Wayland session: {}", e);
+        log_to_file(&format!("Failed to lock Wayland session: {}", e));
         log::warn!("Falling back to demonstration mode");
         run_demonstration_mode(config, lock_manager)?;
     }
@@ -98,10 +132,32 @@ fn lock_wayland_session(
         fn locked(
             &mut self,
             _conn: &Connection,
-            _qh: &QueueHandle<Self>,
-            _session_lock: SessionLock,
+            qh: &QueueHandle<Self>,
+            mut session_lock: SessionLock,
         ) {
-            log::info!("Session locked successfully!");
+            log::info!("===========================================");
+            log::info!("Session LOCKED SUCCESSFULLY!");
+            log::info!("===========================================");
+            log_to_file("Session LOCKED - creating surfaces");
+            eprintln!("SESSION LOCKED - creating lock surfaces");
+
+            // Take ownership of session_lock
+            let lock_ref = &mut session_lock;
+
+            // Create lock surfaces for all outputs
+            for output in self.output_state.outputs() {
+                log_to_file(&format!("Creating lock surface for output"));
+                let surface = self.compositor_state.create_surface(qh);
+                let lock_surface = lock_ref.create_lock_surface(surface, &output, qh);
+                self.lock_surfaces.push(lock_surface);
+            }
+
+            log_to_file(&format!(
+                "Created {} lock surfaces",
+                self.lock_surfaces.len()
+            ));
+
+            self.session_lock = Some(session_lock);
 
             if let Ok(mut lock_manager) = self.lock_manager.lock() {
                 lock_manager.initialize_lock_surfaces();
@@ -114,7 +170,7 @@ fn lock_wayland_session(
             _qh: &QueueHandle<Self>,
             _session_lock: SessionLock,
         ) {
-            log::info!("Session unlocked or lock denied");
+            log::info!("Session unlocked or lock denied - exiting");
             self.exit = true;
         }
 
@@ -127,7 +183,11 @@ fn lock_wayland_session(
             _serial: u32,
         ) {
             let (width, height) = configure.new_size;
-            log::debug!("Configuring lock surface: {}x{}", width, height);
+            log::info!("===========================================");
+            log::info!("CONFIGURE callback: {}x{}", width, height);
+            log::info!("===========================================");
+            log_to_file(&format!("CONFIGURE: {}x{}", width, height));
+            eprintln!("CONFIGURE: {}x{}", width, height);
 
             let surface_added = if let Ok(mut lock_manager) = self.lock_manager.lock() {
                 lock_manager.add_surface(width as i32, height as i32)
@@ -154,6 +214,9 @@ fn lock_wayland_session(
 
                 if let Some(locked_surface) = lock_manager.get_surface_mut(surface_count - 1) {
                     locked_surface.set_wayland_surface(session_lock_surface.wl_surface().clone());
+
+                    // Render the surface first
+                    locked_surface.renderer.render();
 
                     match locked_surface.renderer.get_pixel_data() {
                         Ok(pixel_data) => {
@@ -283,10 +346,14 @@ fn lock_wayland_session(
         fn new_output(
             &mut self,
             _conn: &Connection,
-            _qh: &QueueHandle<Self>,
-            _output: wl_output::WlOutput,
+            qh: &QueueHandle<Self>,
+            output: wl_output::WlOutput,
         ) {
-            log::info!("New output detected");
+            log::info!("New output detected: creating lock surface");
+            if let Some(ref session_lock) = self.session_lock {
+                let surface = self.compositor_state.create_surface(qh);
+                let _lock_surface = session_lock.create_lock_surface(surface, &output, qh);
+            }
         }
 
         fn update_output(
@@ -325,7 +392,8 @@ fn lock_wayland_session(
             _keys: &[u32],
             _layout_keysyms: &[smithay_client_toolkit::seat::keyboard::Keysym],
         ) {
-            log::debug!("Keyboard entered surface (serial: {})", _serial);
+            log::info!("Keyboard entered surface (serial: {})", _serial);
+            log_to_file(&format!("Keyboard entered surface (serial: {})", _serial));
         }
 
         fn leave(
@@ -336,7 +404,8 @@ fn lock_wayland_session(
             _surface: &wl_surface::WlSurface,
             _serial: u32,
         ) {
-            log::debug!("Keyboard left surface (serial: {})", _serial);
+            log::info!("Keyboard left surface (serial: {})", _serial);
+            log_to_file(&format!("Keyboard left surface (serial: {})", _serial));
         }
 
         fn press_key(
@@ -347,6 +416,12 @@ fn lock_wayland_session(
             _serial: u32,
             event: KeyEvent,
         ) {
+            log::info!(
+                "Key pressed (serial: {}, keysym: {:?})",
+                _serial,
+                event.keysym
+            );
+            log_to_file(&format!("Key pressed: keysym={:?}", event.keysym));
             self.handle_key_event(event);
         }
 
@@ -380,7 +455,8 @@ fn lock_wayland_session(
             _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
             _keymap: smithay_client_toolkit::seat::keyboard::Keymap<'_>,
         ) {
-            log::debug!("Keymap updated");
+            log::info!("Keymap updated");
+            log_to_file("Keymap updated");
         }
     }
 
@@ -400,14 +476,28 @@ fn lock_wayland_session(
         fn handle_key_event(&mut self, event: KeyEvent) {
             use smithay_client_toolkit::seat::keyboard::Keysym;
 
+            log_to_file(&format!(
+                "handle_key_event called: keysym={:?}",
+                event.keysym
+            ));
+
             if event.keysym == Keysym::Return {
-                log::info!("Enter pressed - submitting password");
+                log::info!("Enter pressed - unlocking session (demo mode)");
+                log_to_file("ENTER pressed - unlocking!");
+                if let Some(ref session_lock) = self.session_lock.take() {
+                    session_lock.unlock();
+                }
+                self.exit = true;
+                log_to_file("Set exit=true");
             } else if event.keysym == Keysym::BackSpace {
                 log::info!("Backspace pressed");
+                log_to_file("Backspace pressed");
             } else if let Some(input) = event.utf8 {
                 log::info!("Key pressed: '{}'", input);
+                log_to_file(&format!("Key pressed: '{}'", input));
             } else {
                 log::debug!("Non-character keysym pressed: {:?}", event.keysym);
+                log_to_file(&format!("Non-char keysym: {:?}", event.keysym));
             }
         }
     }
@@ -429,11 +519,37 @@ fn lock_wayland_session(
         fn new_capability(
             &mut self,
             _conn: &Connection,
-            _qh: &QueueHandle<Self>,
-            _seat: wayland_client::protocol::wl_seat::WlSeat,
+            qh: &QueueHandle<Self>,
+            seat: wayland_client::protocol::wl_seat::WlSeat,
             capability: smithay_client_toolkit::seat::Capability,
         ) {
-            log::debug!("New capability: {:?}", capability);
+            log::info!("New capability: {:?}", capability);
+            log_to_file(&format!("New capability: {:?}", capability));
+
+            if capability == smithay_client_toolkit::seat::Capability::Keyboard {
+                log::info!("Setting up keyboard");
+                log_to_file("Setting up keyboard - trying to get keyboard");
+
+                match self.seat_state.get_keyboard_with_repeat(
+                    qh,
+                    &seat,
+                    None,
+                    self.loop_handle.clone(),
+                    Box::new(|state, _wl_kbd, event| {
+                        log::info!("Keyboard repeat event: {:?}", event);
+                        log_to_file(&format!("Keyboard repeat: {:?}", event));
+                    }),
+                ) {
+                    Ok(_keyboard) => {
+                        log::info!("Keyboard created successfully");
+                        log_to_file("Keyboard created successfully");
+                    }
+                    Err(e) => {
+                        log::error!("Failed to create keyboard: {:?}", e);
+                        log_to_file(&format!("Failed to create keyboard: {:?}", e));
+                    }
+                }
+            }
         }
 
         fn remove_capability(
@@ -508,19 +624,22 @@ fn lock_wayland_session(
     );
 
     log::info!("Session lock requested, waiting for compositor...");
+    log_to_file("Session lock requested");
+    eprintln!("Session lock requested - running event loop");
 
     WaylandSource::new(conn, event_queue).insert(event_loop.handle())?;
+
+    log_to_file("Starting event loop");
+    eprintln!("Starting event loop - press Enter to unlock");
 
     while !state.exit && !state.ctrlc_exit.load(std::sync::atomic::Ordering::SeqCst) {
         event_loop.dispatch(Duration::from_millis(16), &mut state)?;
     }
 
-    if state.ctrlc_exit.load(std::sync::atomic::Ordering::SeqCst) {
-        log::warn!("Exiting due to Ctrl+C");
-        // The session lock will be destroyed when the SessionLock object is dropped
-    }
+    log_to_file("Event loop exited");
+    log::info!("Event loop exited, exit={}", state.exit);
 
-    log::info!("Exiting wayrustlock");
+    log_to_file("Function completed");
     Ok(())
 }
 
