@@ -1,0 +1,5 @@
+# PAM configuration for wayrustlock
+# Install this file to /etc/pam.d/wayrustlock
+
+# Use the standard login service authentication
+auth include login

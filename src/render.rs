@@ -17,6 +17,7 @@ pub struct Renderer {
     wrong_password_start: Option<Instant>,
     key_highlight_start: Option<Instant>,
     background: Option<ImageSurface>,
+    password_display: String,
 }
 
 impl Renderer {
@@ -48,6 +49,7 @@ impl Renderer {
             wrong_password_start: None,
             key_highlight_start: None,
             background: None,
+            password_display: String::new(),
         }
     }
 
@@ -83,6 +85,11 @@ impl Renderer {
         self.key_highlight_start = Some(Instant::now());
     }
 
+    /// Set the password display string (masked)
+    pub fn set_password_display(&mut self, password: String) {
+        self.password_display = password;
+    }
+
     /// Render the current frame
     pub fn render(&mut self) {
         // Clear the surface - draw a VISIBLE color (dark gray) instead of black
@@ -113,6 +120,11 @@ impl Renderer {
         // Draw indicator if enabled
         if self.config.indicator {
             self.draw_indicator();
+        }
+
+        // Draw password display (if not empty)
+        if !self.password_display.is_empty() {
+            self.draw_password_display();
         }
 
         // Draw wrong password feedback if active
@@ -241,6 +253,37 @@ impl Renderer {
             self.context.line_to(center_x + radius, center_y);
             self.context.stroke().expect("Failed to draw separator");
         }
+    }
+
+    /// Draw the password display (masked characters)
+    fn draw_password_display(&self) {
+        if self.password_display.is_empty() {
+            return;
+        }
+
+        // Position: below the indicator ring (or centered if no indicator)
+        let center_x = self.width as f64 / 2.0;
+        let center_y = self.height as f64 / 2.0;
+        let radius = self.config.indicator_radius as f64;
+        let thickness = self.config.indicator_thickness as f64;
+
+        // Place password text below the ring
+        let text_y = center_y + radius + thickness + 40.0; // 40px below ring
+
+        self.context.set_font_size(36.0);
+        self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+
+        // Center the text
+        let extents = self
+            .context
+            .text_extents(&self.password_display)
+            .expect("Failed to get password text extents");
+        let text_x = center_x - extents.width() / 2.0;
+
+        self.context.move_to(text_x, text_y);
+        self.context
+            .show_text(&self.password_display)
+            .expect("Failed to draw password");
     }
 
     /// Draw wrong password feedback (red flash)

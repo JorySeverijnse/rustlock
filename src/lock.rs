@@ -135,6 +135,9 @@ impl LockedSurface {
             self.renderer.set_background(background.clone());
         }
 
+        self.renderer
+            .set_password_display(self.input_handler.get_display_password());
+
         // Render the frame
         self.renderer.render();
 
@@ -171,7 +174,10 @@ impl LockedSurface {
     }
 
     /// Handle a key event from Wayland
-    pub fn handle_key_event(&mut self, event: smithay_client_toolkit::seat::keyboard::KeyEvent) {
+    pub fn handle_key_event(
+        &mut self,
+        event: smithay_client_toolkit::seat::keyboard::KeyEvent,
+    ) -> Option<InputAction> {
         // Convert to our input handler format
         // Note: KeyEvent has fields: time, raw_code, keysym, utf8
         // We need to determine state and modifiers from context (not available in this demo)
@@ -185,32 +191,96 @@ impl LockedSurface {
             .handle_key_event(keysym, state, modifiers);
 
         match action {
-            InputAction::SubmitPassword(_password) => {
+            InputAction::SubmitPassword(password) => {
                 // Show key highlight for visual feedback
                 self.show_key_highlight();
-
-                // TODO: Authenticate with PAM
-                // For now, just clear the password
-                self.input_handler.clear_password();
-
-                // TODO: If authentication succeeds, unlock the session
-                // If authentication fails, show wrong password feedback
-                self.show_wrong_password();
+                Some(InputAction::SubmitPassword(password))
             }
-            InputAction::Cancel => {
-                // Escape key pressed
-                // TODO: Handle cancel action (maybe show quit confirmation?)
-            }
-            InputAction::TempScreenshot => {
-                // Temp screenshot (peek) activated
-                // Already handled in update() method via timer
-            }
-            InputAction::PasswordChanged => {
-                // Password changed, update display
-                // TODO: Update password display in renderer
-            }
-            InputAction::None => {}
+            InputAction::Cancel => Some(InputAction::Cancel),
+            InputAction::TempScreenshot => Some(InputAction::TempScreenshot),
+            InputAction::PasswordChanged => Some(InputAction::PasswordChanged),
+            InputAction::None => None,
         }
+    }
+
+    /// Authenticate a password using PAM
+    pub fn authenticate_password(&self, password: zeroize::Zeroizing<String>) -> bool {
+        // Create a simple PAM conversation that provides the password
+        struct SimpleConversation {
+            password: Option<zeroize::Zeroizing<String>>,
+        }
+
+        impl pam_client::ConversationHandler for SimpleConversation {
+            fn init(&mut self, _default_user: Option<impl AsRef<str>>) {}
+
+            fn prompt_echo_on(
+                &mut self,
+                _msg: &std::ffi::CStr,
+            ) -> Result<std::ffi::CString, pam_client::ErrorCode> {
+                Err(pam_client::ErrorCode::ABORT)
+            }
+
+            fn prompt_echo_off(
+                &mut self,
+                _msg: &std::ffi::CStr,
+            ) -> Result<std::ffi::CString, pam_client::ErrorCode> {
+                if let Some(pwd) = self.password.take() {
+                    std::ffi::CString::new(pwd.as_str()).map_err(|_| pam_client::ErrorCode::ABORT)
+                } else {
+                    Err(pam_client::ErrorCode::ABORT)
+                }
+            }
+
+            fn text_info(&mut self, _msg: &std::ffi::CStr) {}
+            fn error_msg(&mut self, _msg: &std::ffi::CStr) {}
+            fn radio_prompt(
+                &mut self,
+                _msg: &std::ffi::CStr,
+            ) -> Result<bool, pam_client::ErrorCode> {
+                Ok(false)
+            }
+        }
+
+        // Get username
+        let username = match users::get_current_username() {
+            Some(name) => name.to_string_lossy().into_owned(),
+            None => {
+                log::error!("Failed to get current username");
+                return false;
+            }
+        };
+
+        // Create PAM context
+        let service_name = &self.config.pam_service;
+        let conversation = SimpleConversation {
+            password: Some(password),
+        };
+
+        let mut context =
+            match pam_client::Context::new(service_name, Some(username.as_str()), conversation) {
+                Ok(ctx) => ctx,
+                Err(e) => {
+                    log::error!("Failed to initialize PAM context: {:?}", e);
+                    return false;
+                }
+            };
+
+        // Authenticate
+        match context.authenticate(pam_client::Flag::NONE) {
+            Ok(()) => {
+                log::info!("PAM authentication successful for user {}", username);
+                true
+            }
+            Err(e) => {
+                log::warn!("PAM authentication failed: {:?}", e);
+                false
+            }
+        }
+    }
+
+    /// Get the input handler for this locked surface
+    pub fn input_handler(&self) -> &InputHandler {
+        &self.input_handler
     }
 
     /// Get the rendered image surface for this locked surface
@@ -246,7 +316,7 @@ impl LockedSurface {
 
 /// Manager for all locked surfaces (multiple outputs)
 pub struct LockManager {
-    surfaces: Vec<LockedSurface>,
+    pub surfaces: Vec<LockedSurface>,
     config: Config,
     locked: bool,
 }
@@ -279,13 +349,20 @@ impl LockManager {
         }
     }
 
-    /// Handle a key event (distribute to all surfaces or focused surface)
-    pub fn handle_key_event(&mut self, event: smithay_client_toolkit::seat::keyboard::KeyEvent) {
-        // For now, send to all surfaces
-        // In a real implementation, we would determine which surface has focus
+    /// Handle a key event and return any action that needs processing
+    /// Returns the first non-None action from any surface
+    pub fn handle_key_event(
+        &mut self,
+        event: smithay_client_toolkit::seat::keyboard::KeyEvent,
+    ) -> Option<InputAction> {
+        // Distribute key event to all surfaces and collect first action
+        let mut action = None;
         for surface in &mut self.surfaces {
-            surface.handle_key_event(event.clone());
+            if let Some(a) = surface.handle_key_event(event.clone()) {
+                action = Some(a);
+            }
         }
+        action
     }
 
     /// Check if session is locked

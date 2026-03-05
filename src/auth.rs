@@ -3,63 +3,14 @@ use std::thread;
 
 use log::{debug, error};
 use pam_client::{Context, ErrorCode, Flag};
-use secstr::SecVec;
 use smithay_client_toolkit::reexports::{calloop::channel, calloop::EventLoop};
 use users::get_current_username;
+use zeroize::Zeroizing;
 
 const SERVICE_NAME: &str = "wayrustlock";
 
-pub struct PasswordBuffer(SecVec<u8>);
-
-impl PasswordBuffer {
-    pub fn new() -> Self {
-        Self(SecVec::new(Vec::new()))
-    }
-
-    fn zeroize_string(mut data: String) {
-        use std::sync::atomic;
-
-        let default = u8::default();
-
-        for c in unsafe { data.as_bytes_mut() } {
-            unsafe { std::ptr::write_volatile(c, default) };
-        }
-
-        atomic::fence(atomic::Ordering::SeqCst);
-        atomic::compiler_fence(atomic::Ordering::SeqCst);
-    }
-
-    pub fn append(&mut self, data: String) {
-        let bytes = data.as_bytes();
-        let mut og_len = self.0.unsecure().len();
-        self.0.resize(og_len + bytes.len(), 0);
-        for b in bytes {
-            self.0.unsecure_mut()[og_len] = *b;
-            og_len += 1;
-        }
-        Self::zeroize_string(data);
-    }
-
-    pub fn backspace(&mut self) {
-        let og_len = self.0.unsecure().len();
-        if og_len != 0 {
-            self.0.resize(og_len - 1, 0);
-        }
-    }
-
-    pub fn unsecure(&self) -> &str {
-        unsafe { std::str::from_utf8_unchecked(self.0.unsecure()) }
-    }
-
-    pub fn take(&mut self) -> Self {
-        let mut new_buffer = SecVec::new(Vec::new());
-        std::mem::swap(&mut self.0, &mut new_buffer);
-        Self(new_buffer)
-    }
-}
-
 pub struct LockConversation {
-    pub password: Option<PasswordBuffer>,
+    pub password: Option<Zeroizing<String>>,
 }
 
 impl pam_client::ConversationHandler for LockConversation {
@@ -71,7 +22,7 @@ impl pam_client::ConversationHandler for LockConversation {
 
     fn prompt_echo_off(&mut self, _msg: &CStr) -> Result<CString, ErrorCode> {
         if let Some(password) = self.password.take() {
-            CString::new(password.unsecure()).map_err(|_| ErrorCode::ABORT)
+            CString::new(password.as_str()).map_err(|_| ErrorCode::ABORT)
         } else {
             Err(ErrorCode::ABORT)
         }
@@ -84,7 +35,7 @@ impl pam_client::ConversationHandler for LockConversation {
     }
 }
 
-pub fn create_and_run_auth_loop() -> (channel::Sender<PasswordBuffer>, channel::Channel<bool>) {
+pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channel::Channel<bool>) {
     struct AuthLoopState {
         auth_res_send: channel::Sender<bool>,
         main_closed: bool,
@@ -102,7 +53,7 @@ pub fn create_and_run_auth_loop() -> (channel::Sender<PasswordBuffer>, channel::
         .expect("Failed to initialize PAM context");
     debug!("Prepared to authenticate user '{}'", username);
 
-    let (auth_req_send, auth_req_recv) = channel::channel::<PasswordBuffer>();
+    let (auth_req_send, auth_req_recv) = channel::channel::<Zeroizing<String>>();
     let (auth_res_send, auth_res_recv) = channel::channel::<bool>();
 
     thread::spawn(move || {

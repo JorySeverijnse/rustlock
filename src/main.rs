@@ -13,6 +13,7 @@ use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use zeroize::Zeroizing;
 
 fn setup_file_logging() {
     let log_path =
@@ -87,7 +88,7 @@ fn lock_wayland_session(
         compositor::{CompositorHandler, CompositorState},
         output::{OutputHandler, OutputState},
         reexports::{
-            calloop::{EventLoop, LoopHandle},
+            calloop::{channel, EventLoop, LoopHandle},
             calloop_wayland_source::WaylandSource,
         },
         registry::{ProvidesRegistryState, RegistryState},
@@ -126,6 +127,8 @@ fn lock_wayland_session(
         config: Config,
         ctrlc_exit: Arc<std::sync::atomic::AtomicBool>,
         exit: bool,
+        auth_tx: Option<channel::Sender<Zeroizing<String>>>,
+        unlocking: bool,
     }
 
     impl SessionLockHandler for WaylandLock {
@@ -170,8 +173,17 @@ fn lock_wayland_session(
             _qh: &QueueHandle<Self>,
             _session_lock: SessionLock,
         ) {
-            log::info!("Session unlocked or lock denied - exiting");
+            if self.unlocking {
+                log::info!("✅ Session successfully unlocked - compositor confirmed");
+                log_to_file("✅ Session successfully unlocked - compositor confirmed");
+                self.unlocking = false;
+            } else {
+                log::warn!("Session finished without unlock request - lock denied or cancelled");
+                log_to_file("Session finished without unlock request");
+            }
+            self.session_lock = None;
             self.exit = true;
+            log_to_file("Setting exit=true from finished callback");
         }
 
         fn configure(
@@ -474,30 +486,62 @@ fn lock_wayland_session(
 
     impl WaylandLock {
         fn handle_key_event(&mut self, event: KeyEvent) {
+            use crate::input::InputAction;
             use smithay_client_toolkit::seat::keyboard::Keysym;
 
             log_to_file(&format!(
                 "handle_key_event called: keysym={:?}",
                 event.keysym
             ));
+            log::debug!("Key event: {:?}", event.keysym);
 
             if event.keysym == Keysym::Return {
-                log::info!("Enter pressed - unlocking session (demo mode)");
-                log_to_file("ENTER pressed - unlocking!");
-                if let Some(ref session_lock) = self.session_lock.take() {
-                    session_lock.unlock();
+                log::info!("Enter pressed - submitting password for authentication");
+                log_to_file("ENTER pressed - submitting password");
+
+                if let Ok(mut lock_manager) = self.lock_manager.lock() {
+                    if let Some(InputAction::SubmitPassword(password)) =
+                        lock_manager.handle_key_event(event.clone())
+                    {
+                        // Send password to auth thread for processing
+                        if let Some(tx) = &self.auth_tx {
+                            let _ = tx.send(password);
+                        }
+                        log::debug!("Password submitted for authentication");
+                    }
                 }
-                self.exit = true;
-                log_to_file("Set exit=true");
-            } else if event.keysym == Keysym::BackSpace {
-                log::info!("Backspace pressed");
-                log_to_file("Backspace pressed");
-            } else if let Some(input) = event.utf8 {
-                log::info!("Key pressed: '{}'", input);
-                log_to_file(&format!("Key pressed: '{}'", input));
             } else {
-                log::debug!("Non-character keysym pressed: {:?}", event.keysym);
-                log_to_file(&format!("Non-char keysym: {:?}", event.keysym));
+                // Distribute to all surfaces (BackSpace, characters, etc.)
+                let _ = self
+                    .lock_manager
+                    .lock()
+                    .map(|mut lm| lm.handle_key_event(event));
+            }
+        }
+
+        /// Handle authentication result from the auth thread
+        fn handle_auth_result(&mut self, success: bool) {
+            if success {
+                log::info!("✅ Authentication successful - unlocking session");
+                log_to_file("✅ Authentication successful - unlocking session");
+
+                // Call unlock on the session_lock, but keep it to receive finished event
+                if let Some(session_lock) = &self.session_lock {
+                    session_lock.unlock();
+                    self.unlocking = true;
+                    log_to_file("Unlock requested - waiting for finished event");
+                } else {
+                    log::error!("No session_lock available to unlock!");
+                }
+            } else {
+                log::warn!("❌ Authentication failed - wrong password");
+                log_to_file("❌ Authentication failed - wrong password");
+                // Show wrong password feedback on all surfaces
+                if let Ok(mut lock_manager) = self.lock_manager.lock() {
+                    for surface in &mut lock_manager.surfaces {
+                        surface.show_wrong_password();
+                    }
+                }
             }
         }
     }
@@ -593,6 +637,9 @@ fn lock_wayland_session(
     let qh: QueueHandle<WaylandLock> = event_queue.handle();
     let mut event_loop: EventLoop<WaylandLock> = EventLoop::try_new()?;
 
+    // Create the authentication loop in a separate thread
+    let (auth_tx, auth_rx) = auth::create_and_run_auth_loop();
+
     let mut state = WaylandLock {
         loop_handle: event_loop.handle(),
         conn: conn.clone(),
@@ -614,6 +661,8 @@ fn lock_wayland_session(
         config,
         ctrlc_exit: ctrlc_exit.clone(),
         exit: false,
+        auth_tx: Some(auth_tx),
+        unlocking: false,
     };
 
     state.session_lock = Some(
@@ -628,6 +677,16 @@ fn lock_wayland_session(
     eprintln!("Session lock requested - running event loop");
 
     WaylandSource::new(conn, event_queue).insert(event_loop.handle())?;
+
+    // Insert the authentication channel into the event loop
+    event_loop.handle().insert_source(
+        auth_rx,
+        |event: channel::Event<bool>, _metadata, wayland_lock| {
+            if let channel::Event::Msg(result) = event {
+                wayland_lock.handle_auth_result(result);
+            }
+        },
+    )?;
 
     log_to_file("Starting event loop");
     eprintln!("Starting event loop - press Enter to unlock");

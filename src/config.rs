@@ -12,7 +12,7 @@ pub struct Config {
     #[arg(long)]
     pub clock: bool,
 
-    #[arg(long)]
+    #[arg(long, default_value = "true")]
     pub indicator: bool,
 
     #[arg(long, default_value = "100")]
