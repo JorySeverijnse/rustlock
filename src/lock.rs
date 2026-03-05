@@ -153,7 +153,7 @@ impl LockedSurface {
         let (width, height, stride) = self.renderer.surface_info();
 
         // Create buffer from pool
-        let (buffer, mut canvas) =
+        let (buffer, canvas) =
             pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888)?;
 
         // Copy pixel data to buffer

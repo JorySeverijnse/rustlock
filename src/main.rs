@@ -85,7 +85,7 @@ fn lock_wayland_session(
     ctrlc_exit: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<(), Box<dyn Error>> {
     use smithay_client_toolkit::reexports::calloop;
-    use smithay_client_toolkit::reexports::calloop::timer::TimeoutAction;
+    
     use smithay_client_toolkit::{
         compositor::{CompositorHandler, CompositorState},
         output::{OutputHandler, OutputState},
@@ -694,13 +694,13 @@ fn lock_wayland_session(
     let render_timer = timer::Timer::from_duration(Duration::from_millis(16));
     event_loop.handle().insert_source(
         render_timer,
-        |event, _metadata, state: &mut WaylandLock| {
+        |_event, _metadata, state: &mut WaylandLock| {
             // Update lock manager (renders to Cairo surfaces)
             if let Ok(mut lock_manager) = state.lock_manager.lock() {
                 lock_manager.update();
                 // Commit each surface that has a Wayland surface
                 for surface in lock_manager.surfaces.iter_mut() {
-                    if let Some(wl_surface) = surface.wayland_surface() {
+                    if let Some(_wl_surface) = surface.wayland_surface() {
                         if let Err(e) = surface.commit(&mut state.pool) {
                             log::error!("Failed to commit surface: {:?}", e);
                         }
