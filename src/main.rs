@@ -84,11 +84,13 @@ fn lock_wayland_session(
     lock_manager: Arc<Mutex<LockManager>>,
     ctrlc_exit: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<(), Box<dyn Error>> {
+    use smithay_client_toolkit::reexports::calloop;
+    use smithay_client_toolkit::reexports::calloop::timer::TimeoutAction;
     use smithay_client_toolkit::{
         compositor::{CompositorHandler, CompositorState},
         output::{OutputHandler, OutputState},
         reexports::{
-            calloop::{channel, EventLoop, LoopHandle},
+            calloop::{channel, timer, EventLoop, LoopHandle},
             calloop_wayland_source::WaylandSource,
         },
         registry::{ProvidesRegistryState, RegistryState},
@@ -651,7 +653,7 @@ fn lock_wayland_session(
 
         shm_state: Shm::bind(&globals, &qh).map_err(|_| "wl_shm protocol not supported")?,
         pool: SlotPool::new(
-            1920 * 1080 * 4,
+            1920 * 1080 * 4 * 3, // triple buffering for smooth rendering
             &Shm::bind(&globals, &qh).map_err(|_| "wl_shm protocol not supported")?,
         )
         .map_err(|e| format!("Failed to create slot pool: {:?}", e))?,
@@ -688,6 +690,28 @@ fn lock_wayland_session(
         },
     )?;
 
+    // Insert a timer to update and commit surfaces at 60fps
+    let render_timer = timer::Timer::from_duration(Duration::from_millis(16));
+    event_loop.handle().insert_source(
+        render_timer,
+        |event, _metadata, state: &mut WaylandLock| {
+            // Update lock manager (renders to Cairo surfaces)
+            if let Ok(mut lock_manager) = state.lock_manager.lock() {
+                lock_manager.update();
+                // Commit each surface that has a Wayland surface
+                for surface in lock_manager.surfaces.iter_mut() {
+                    if let Some(wl_surface) = surface.wayland_surface() {
+                        if let Err(e) = surface.commit(&mut state.pool) {
+                            log::error!("Failed to commit surface: {:?}", e);
+                        }
+                    }
+                }
+            }
+            // Reschedule timer to fire again in 16ms (60fps)
+            calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(16))
+        },
+    )?;
+
     log_to_file("Starting event loop");
     eprintln!("Starting event loop - press Enter to unlock");
 
@@ -706,7 +730,6 @@ fn run_demonstration_mode(
     _config: Config,
     lock_manager: Arc<Mutex<LockManager>>,
 ) -> Result<(), Box<dyn Error>> {
-    
     use std::time::Duration;
 
     println!("wayrustlock - Wayland Screen Locker (Demonstration Mode)");

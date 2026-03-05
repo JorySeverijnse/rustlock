@@ -1,11 +1,13 @@
 use cairo::ImageSurface;
+use std::error::Error;
 use std::time::Instant;
-use wayland_client::protocol::wl_surface;
+use wayland_client::protocol::{wl_shm, wl_surface};
 
 use crate::config::Config;
 use crate::input::{InputAction, InputHandler};
 use crate::render::Renderer;
 use crate::screenshot::Screenshot;
+use smithay_client_toolkit::shm::slot::SlotPool;
 
 /// Manages a locked surface for a single output
 pub struct LockedSurface {
@@ -142,6 +144,30 @@ impl LockedSurface {
         self.renderer.render();
 
         self.last_update = Instant::now();
+    }
+
+    /// Commit the rendered frame to the Wayland surface
+    pub fn commit(&self, pool: &mut SlotPool) -> Result<(), Box<dyn Error>> {
+        // Get pixel data from renderer
+        let pixel_data = self.renderer.get_pixel_data()?;
+        let (width, height, stride) = self.renderer.surface_info();
+
+        // Create buffer from pool
+        let (buffer, mut canvas) =
+            pool.create_buffer(width, height, stride, wl_shm::Format::Argb8888)?;
+
+        // Copy pixel data to buffer
+        let copy_len = pixel_data.len().min(canvas.len());
+        canvas[..copy_len].copy_from_slice(&pixel_data[..copy_len]);
+
+        // Attach buffer to Wayland surface and commit
+        if let Some(wl_surface) = &self.wayland_surface {
+            buffer.attach_to(wl_surface)?;
+            wl_surface.damage_buffer(0, 0, width, height);
+            wl_surface.commit();
+        }
+
+        Ok(())
     }
 
     /// Handle resize event from Wayland
