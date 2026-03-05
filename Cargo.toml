@@ -4,21 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-smithay-client-toolkit = "0.18"
+smithay-client-toolkit = { version = "0.19", features = ["calloop"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
-cairo-rs = { version = "0.22", features = ["png", "xcb"] }
+cairo-rs = { version = "0.20", features = ["png"] }
 image = "0.25"
 fastblur = "0.1"
-xkbcommon = "0.9"
-pam = "0.7"
+xkbcommon = "0.7"
+pam-client = "0.5"
+secstr = "0.5"
 clap = { version = "4.5", features = ["derive"] }
 toml = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 zeroize = "1.7"
-calloop = "0.14"
 log = "0.4"
 env_logger = "0.11"
-ctrlc = "3.4"
 chrono = "0.4"
-whoami = "1.0"
+users = "0.11"

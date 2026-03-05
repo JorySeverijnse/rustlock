@@ -2,16 +2,38 @@
 
 A production-ready Wayland screen locker inspired by swaylock-effects.
 
-## Features
+## ⚠️ SAFETY WARNING - READ BEFORE USE
 
-- Session locking via ext-session-lock-v1 protocol
-- Screenshot capture using wlr-screencopy-unstable-v1
-- Gaussian blur and vignette effects
-- Clock display with customizable formatting
-- Indicator ring with customizable colors and dimensions
-- PAM authentication
+**This tool is under active development.** Screen lockers can cause system lockups if they malfunction. 
+
+**If the screen locker gets stuck:**
+- Switch to another TTY: Press `Ctrl+Alt+F2`, login, then run `pkill -9 wayrustlock`
+- From another terminal: `pkill -9 wayrustlock` or `killall wayrustlock`
+- If screen is black/red: hard restart may be required
+
+**Always test with a timeout first:**
+```bash
+timeout 5 ./target/release/wayrustlock --indicator --clock
+# If stuck, system will auto-unlock after 5 seconds
+```
+
+## Features (Implemented vs Planned)
+
+### ✅ Implemented
+- Session locking via ext-session-lock-v1 protocol (tested on sway)
+- Buffer creation from Cairo surfaces (wl_shm)
+- CLI argument parsing with all swaylock-effects options
+- PAM authentication infrastructure (using pam-client crate)
+- Keyboard handler with proper KeyEvent processing
+- Module architecture (auth, input, lock, render, screenshot, timer, util)
+
+### 🔄 In Progress
+- Screenshot capture (wlr-screencopy protocol not yet integrated)
+- Full PAM integration with auth loop
+
+### ❌ Not Yet Implemented
+- Real screenshot capture (currently shows solid color background)
 - Grace period and fade-in animations
-- Multi-monitor support
 
 ## Installation
 

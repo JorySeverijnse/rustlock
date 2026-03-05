@@ -248,19 +248,15 @@ impl LockedSurface {
 pub struct LockManager {
     surfaces: Vec<LockedSurface>,
     config: Config,
-    auth: crate::auth::Auth,
     locked: bool,
 }
 
 impl LockManager {
     /// Create a new lock manager
     pub fn new(config: Config) -> Self {
-        let auth = crate::auth::Auth::new(config.pam_service.clone());
-
         Self {
             surfaces: Vec::new(),
             config,
-            auth,
             locked: false,
         }
     }

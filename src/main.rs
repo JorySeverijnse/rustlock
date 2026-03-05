@@ -67,7 +67,7 @@ fn lock_wayland_session(
             SessionLock, SessionLockHandler, SessionLockState, SessionLockSurface,
             SessionLockSurfaceConfigure,
         },
-        shm::{Shm, ShmHandler},
+        shm::{slot::SlotPool, Shm, ShmHandler},
     };
     use std::time::Duration;
     use wayland_client::{
@@ -85,6 +85,7 @@ fn lock_wayland_session(
         session_lock_state: SessionLockState,
         seat_state: SeatState,
         shm_state: Shm,
+        pool: SlotPool,
         session_lock: Option<SessionLock>,
         lock_surfaces: Vec<SessionLockSurface>,
         lock_manager: Arc<Mutex<LockManager>>,
@@ -155,11 +156,53 @@ fn lock_wayland_session(
                     locked_surface.set_wayland_surface(session_lock_surface.wl_surface().clone());
 
                     match locked_surface.renderer.get_pixel_data() {
-                        Ok(_pixel_data) => {
-                            // For now, just commit the surface without buffer
-                            // TODO: Implement proper buffer creation
-                            session_lock_surface.wl_surface().commit();
-                            log::debug!("Surface committed (buffer creation disabled)");
+                        Ok(pixel_data) => {
+                            let (renderer_width, renderer_height, stride) =
+                                locked_surface.renderer.surface_info();
+                            let actual_width = width as i32;
+                            let actual_height = height as i32;
+                            let actual_stride = stride;
+
+                            // Create a buffer from the pool
+                            match self.pool.create_buffer(
+                                actual_width,
+                                actual_height,
+                                actual_stride,
+                                wayland_client::protocol::wl_shm::Format::Argb8888,
+                            ) {
+                                Ok((buffer, canvas)) => {
+                                    // Copy pixel data to the buffer
+                                    let data_len = canvas.len();
+                                    let copy_len = pixel_data.len().min(data_len);
+                                    canvas[..copy_len].copy_from_slice(&pixel_data[..copy_len]);
+
+                                    // Damage the entire surface
+                                    session_lock_surface.wl_surface().damage_buffer(
+                                        0,
+                                        0,
+                                        actual_width,
+                                        actual_height,
+                                    );
+
+                                    // Attach buffer and commit
+                                    if let Err(e) =
+                                        buffer.attach_to(session_lock_surface.wl_surface())
+                                    {
+                                        log::error!("Failed to attach buffer: {:?}", e);
+                                    } else {
+                                        session_lock_surface.wl_surface().commit();
+                                        log::debug!(
+                                            "Surface committed with buffer {}x{}",
+                                            actual_width,
+                                            actual_height
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to create buffer from pool: {:?}", e);
+                                    session_lock_surface.wl_surface().commit();
+                                }
+                            }
                         }
                         Err(e) => {
                             log::error!("Failed to get pixel data from Cairo surface: {:?}", e);
@@ -209,6 +252,26 @@ fn lock_wayland_session(
                     log::debug!("Frame update for surface");
                 }
             }
+        }
+
+        fn surface_enter(
+            &mut self,
+            _conn: &Connection,
+            _qh: &QueueHandle<Self>,
+            _surface: &wl_surface::WlSurface,
+            _output: &wl_output::WlOutput,
+        ) {
+            log::debug!("Surface entered");
+        }
+
+        fn surface_leave(
+            &mut self,
+            _conn: &Connection,
+            _qh: &QueueHandle<Self>,
+            _surface: &wl_surface::WlSurface,
+            _output: &wl_output::WlOutput,
+        ) {
+            log::debug!("Surface left");
         }
     }
 
@@ -282,9 +345,9 @@ fn lock_wayland_session(
             _qh: &QueueHandle<Self>,
             _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
             _serial: u32,
-            _event: KeyEvent,
+            event: KeyEvent,
         ) {
-            log::debug!("Key pressed (serial: {})", _serial);
+            self.handle_key_event(event);
         }
 
         fn release_key(
@@ -305,18 +368,19 @@ fn lock_wayland_session(
             _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
             _serial: u32,
             _modifiers: Modifiers,
+            _layout: u32,
         ) {
             log::debug!("Modifiers updated (serial: {})", _serial);
         }
 
-        fn update_repeat_info(
+        fn update_keymap(
             &mut self,
             _conn: &Connection,
             _qh: &QueueHandle<Self>,
             _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
-            _repeat_info: RepeatInfo,
+            _keymap: smithay_client_toolkit::seat::keyboard::Keymap<'_>,
         ) {
-            log::debug!("Repeat info updated");
+            log::debug!("Keymap updated");
         }
     }
 
@@ -333,53 +397,18 @@ fn lock_wayland_session(
     }
 
     impl WaylandLock {
-        fn handle_key_event(
-            &mut self,
-            keysym: smithay_client_toolkit::seat::keyboard::Keysym,
-            pressed: bool,
-        ) {
-            if !pressed {
-                return; // Only handle key presses for now
+        fn handle_key_event(&mut self, event: KeyEvent) {
+            use smithay_client_toolkit::seat::keyboard::Keysym;
+
+            if event.keysym == Keysym::Return {
+                log::info!("Enter pressed - submitting password");
+            } else if event.keysym == Keysym::BackSpace {
+                log::info!("Backspace pressed");
+            } else if let Some(input) = event.utf8 {
+                log::info!("Key pressed: '{}'", input);
+            } else {
+                log::debug!("Non-character keysym pressed: {:?}", event.keysym);
             }
-
-            // Convert keysym to character
-            let ch = self.keysym_to_char(keysym);
-
-            if let Ok(mut lock_manager) = self.lock_manager.lock() {
-                if let Some(ch) = ch {
-                    log::info!("Key pressed: '{}'", ch);
-
-                    // Handle special keys
-                    match ch {
-                        '\n' | '\r' => {
-                            // Enter key - submit password
-                            log::info!("Enter pressed - would submit password");
-                        }
-                        '\x1b' => {
-                            // Escape key
-                            log::info!("Escape pressed");
-                        }
-                        'p' | 'P' => {
-                            // 'p' key - temp screenshot peek
-                            log::info!("'p' pressed - would show temp screenshot");
-                            lock_manager.toggle_peek();
-                        }
-                        _ => {
-                            // Regular character - add to password
-                            log::debug!("Character '{}' added to password buffer", ch);
-                        }
-                    }
-                } else {
-                    log::debug!("Non-character keysym pressed");
-                }
-            }
-        }
-
-        fn keysym_to_char(
-            &self,
-            _keysym: smithay_client_toolkit::seat::keyboard::Keysym,
-        ) -> Option<char> {
-            None
         }
     }
 
@@ -458,6 +487,11 @@ fn lock_wayland_session(
         seat_state: SeatState::new(&globals, &qh),
 
         shm_state: Shm::bind(&globals, &qh).map_err(|_| "wl_shm protocol not supported")?,
+        pool: SlotPool::new(
+            1920 * 1080 * 4,
+            &Shm::bind(&globals, &qh).map_err(|_| "wl_shm protocol not supported")?,
+        )
+        .map_err(|e| format!("Failed to create slot pool: {:?}", e))?,
         session_lock: None,
         lock_surfaces: Vec::new(),
         lock_manager,
@@ -521,24 +555,10 @@ fn run_demonstration_mode(
 
     log::info!("Demonstration mode: Press Ctrl+C to exit");
 
-    // Set up Ctrl+C handler for demonstration mode
+    // For demonstration mode, just run for a short time then exit
     let running = Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let running_clone = running.clone();
 
-    ctrlc::set_handler(move || {
-        log::warn!("Ctrl+C received - exiting demonstration mode");
-        running_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-    })
-    .expect("Failed to set Ctrl+C handler");
-
-    while running.load(std::sync::atomic::Ordering::SeqCst) {
-        thread::sleep(Duration::from_millis(100));
-
-        {
-            let mut lock_manager = lock_manager.lock().unwrap();
-            lock_manager.update();
-        }
-    }
+    std::thread::sleep(Duration::from_secs(30));
 
     log::info!("Exiting demonstration mode");
     Ok(())
