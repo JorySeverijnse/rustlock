@@ -94,7 +94,7 @@ fn lock_wayland_session(
         registry::{ProvidesRegistryState, RegistryState},
         registry_handlers,
         seat::{
-            keyboard::{KeyEvent, KeyboardData, KeyboardHandler, Modifiers, RepeatInfo},
+            keyboard::{KeyEvent, KeyboardHandler, Modifiers},
             pointer::PointerHandler,
             SeatHandler, SeatState,
         },
@@ -189,7 +189,7 @@ fn lock_wayland_session(
         fn configure(
             &mut self,
             _conn: &Connection,
-            qh: &QueueHandle<Self>,
+            _qh: &QueueHandle<Self>,
             session_lock_surface: SessionLockSurface,
             configure: SessionLockSurfaceConfigure,
             _serial: u32,
@@ -232,7 +232,7 @@ fn lock_wayland_session(
 
                     match locked_surface.renderer.get_pixel_data() {
                         Ok(pixel_data) => {
-                            let (renderer_width, renderer_height, stride) =
+                            let (_renderer_width, _renderer_height, stride) =
                                 locked_surface.renderer.surface_info();
                             let actual_width = width as i32;
                             let actual_height = height as i32;
@@ -320,7 +320,7 @@ fn lock_wayland_session(
             if let Ok(mut lock_manager) = self.lock_manager.lock() {
                 lock_manager.update();
 
-                if let Some(locked_surface) = lock_manager.find_surface_by_wayland_surface(surface)
+                if let Some(_locked_surface) = lock_manager.find_surface_by_wayland_surface(surface)
                 {
                     // For now, just log that we would update the surface
                     // TODO: Implement proper buffer creation for animation
@@ -579,7 +579,7 @@ fn lock_wayland_session(
                     &seat,
                     None,
                     self.loop_handle.clone(),
-                    Box::new(|state, _wl_kbd, event| {
+                    Box::new(|_state, _wl_kbd, event| {
                         log::info!("Keyboard repeat event: {:?}", event);
                         log_to_file(&format!("Keyboard repeat: {:?}", event));
                     }),
@@ -706,7 +706,7 @@ fn run_demonstration_mode(
     _config: Config,
     lock_manager: Arc<Mutex<LockManager>>,
 ) -> Result<(), Box<dyn Error>> {
-    use std::thread;
+    
     use std::time::Duration;
 
     println!("wayrustlock - Wayland Screen Locker (Demonstration Mode)");
@@ -734,7 +734,7 @@ fn run_demonstration_mode(
     log::info!("Demonstration mode: Press Ctrl+C to exit");
 
     // For demonstration mode, just run for a short time then exit
-    let running = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let _running = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
     std::thread::sleep(Duration::from_secs(30));
 
