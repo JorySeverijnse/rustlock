@@ -1,7 +1,8 @@
 use cairo::ImageSurface;
 use std::error::Error;
 use std::time::Instant;
-use wayland_client::protocol::{wl_shm, wl_surface};
+use wayland_client::protocol::{wl_output, wl_shm, wl_surface};
+use wayland_client::Proxy;
 
 use crate::config::Config;
 use crate::input::{InputAction, InputHandler};
@@ -23,11 +24,17 @@ pub struct LockedSurface {
     temp_screenshot_shown: bool,
     last_update: Instant,
     wayland_surface: Option<wl_surface::WlSurface>,
+    output: wl_output::WlOutput,
 }
 
 impl LockedSurface {
     /// Create a new locked surface for an output
-    pub fn new(width: i32, height: i32, config: &Config) -> Option<Self> {
+    pub fn new(
+        width: i32,
+        height: i32,
+        config: &Config,
+        output: wl_output::WlOutput,
+    ) -> Option<Self> {
         if width <= 0 || height <= 0 {
             return None;
         }
@@ -35,38 +42,8 @@ impl LockedSurface {
         let renderer = Renderer::new(width, height, config.clone());
         let input_handler = InputHandler::new(config.clone());
 
-        // Create background if screenshots are enabled
-        let background = if config.screenshots {
-            // For now, create a dummy screenshot with the output dimensions
-            // In a real implementation, this would capture actual screenshots via Wayland
-            let mut screenshot = Screenshot {
-                width: width as u32,
-                height: height as u32,
-                data: vec![0u8; (width * height * 4) as usize],
-            };
-
-            // Fill with a dark gray color (similar to swaylock default)
-            for i in 0..(screenshot.width * screenshot.height) as usize {
-                let offset = i * 4;
-                screenshot.data[offset] = 40; // R
-                screenshot.data[offset + 1] = 44; // G
-                screenshot.data[offset + 2] = 52; // B
-                screenshot.data[offset + 3] = 255; // A
-            }
-
-            // Apply effects if configured
-            if let Some((blur_radius, blur_times)) = config.effect_blur {
-                screenshot.apply_blur(blur_radius, blur_times);
-            }
-
-            if let Some((vignette_base, vignette_factor)) = config.effect_vignette {
-                screenshot.apply_vignette(vignette_base, vignette_factor);
-            }
-
-            Some(screenshot.as_image_surface())
-        } else {
-            None
-        };
+        // Background will be set later when screenshot is captured (if screenshots enabled)
+        let background = None;
 
         Some(Self {
             width,
@@ -81,6 +58,7 @@ impl LockedSurface {
             temp_screenshot_shown: false,
             last_update: Instant::now(),
             wayland_surface: None,
+            output,
         })
     }
 
@@ -334,9 +312,19 @@ impl LockedSurface {
         self.wayland_surface.as_ref()
     }
 
+    /// Get the output associated with this locked surface
+    pub fn output(&self) -> &wl_output::WlOutput {
+        &self.output
+    }
+
     /// Check if this surface has a Wayland surface attached
     pub fn has_wayland_surface(&self) -> bool {
         self.wayland_surface.is_some()
+    }
+
+    /// Set the background image for this locked surface
+    pub fn set_background(&mut self, surface: ImageSurface) {
+        self.background = Some(surface);
     }
 }
 
@@ -358,8 +346,8 @@ impl LockManager {
     }
 
     /// Add a locked surface for an output
-    pub fn add_surface(&mut self, width: i32, height: i32) -> bool {
-        match LockedSurface::new(width, height, &self.config) {
+    pub fn add_surface(&mut self, width: i32, height: i32, output: wl_output::WlOutput) -> bool {
+        match LockedSurface::new(width, height, &self.config, output) {
             Some(surface) => {
                 self.surfaces.push(surface);
                 true
@@ -423,16 +411,6 @@ impl LockManager {
         self.surfaces.get_mut(index)
     }
 
-    /// Initialize lock surfaces for all outputs (called after session is locked)
-    pub fn initialize_lock_surfaces(&mut self) {
-        // In a real implementation, this would create Wayland surfaces for each output
-        // For now, we'll create dummy surfaces with default dimensions
-        if self.surfaces.is_empty() {
-            // Add a default surface (single monitor)
-            self.add_surface(1920, 1080);
-        }
-    }
-
     /// Toggle temp screenshot peek mode
     pub fn toggle_peek(&mut self) {
         for surface in &mut self.surfaces {
@@ -448,5 +426,15 @@ impl LockManager {
         self.surfaces
             .iter_mut()
             .find(|surface| surface.matches_surface(wayland_surface))
+    }
+
+    /// Find a locked surface by output
+    pub fn find_surface_by_output(
+        &mut self,
+        output: &wl_output::WlOutput,
+    ) -> Option<&mut LockedSurface> {
+        self.surfaces
+            .iter_mut()
+            .find(|surface| surface.output().id() == output.id())
     }
 }

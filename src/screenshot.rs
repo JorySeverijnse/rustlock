@@ -1,55 +1,85 @@
+//!
+//! This module provides functionality to capture the current screen contents
+//! and apply visual effects like blur and vignette, similar to swaylock-effects.
+
+use anyhow::{Context, Result};
+use cairo::ImageSurface;
+use log::debug;
+use smithay_client_toolkit::shm::{slot::Buffer, slot::SlotPool};
+use std::sync::Mutex;
+use wayland_client::globals::GlobalList;
+use wayland_client::protocol::{wl_output, wl_shm};
+use wayland_client::{Dispatch, QueueHandle};
+use wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::{
+    Flags, ZwlrScreencopyFrameV1,
+};
+use wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
+
+use crate::config::Config;
+
+/// A captured screenshot with optional visual effects applied.
 pub struct Screenshot {
-    pub width: u32,
-    pub height: u32,
-    pub data: Vec<u8>,
+    surface: ImageSurface,
 }
 
 impl Screenshot {
-    pub fn capture(
-        _output: wayland_client::protocol::wl_output::WlOutput,
-        width: i32,
-        height: i32,
-    ) -> Result<Self, String> {
-        let width = width as u32;
-        let height = height as u32;
-        let size = (width * height * 4) as usize;
-        let mut data = vec![0u8; size];
-
-        for i in 0..(width * height) as usize {
-            let offset = i * 4;
-            data[offset] = 40;
-            data[offset + 1] = 44;
-            data[offset + 2] = 52;
-            data[offset + 3] = 255;
-        }
-
-        Ok(Self {
-            width,
-            height,
-            data,
-        })
+    /// Create a new screenshot from a Cairo surface.
+    pub fn new(surface: ImageSurface) -> Self {
+        Self { surface }
     }
 
-    pub fn apply_blur(&mut self, radius: u32, times: u32) {
+    /// Get a reference to the underlying surface.
+    pub fn surface(&self) -> &ImageSurface {
+        &self.surface
+    }
+
+    /// Consume the screenshot and return the underlying Cairo surface.
+    pub fn into_inner(self) -> ImageSurface {
+        self.surface
+    }
+
+    /// Apply configured visual effects to the screenshot.
+    pub fn apply_effects(&mut self, config: &Config) -> Result<()> {
+        if let Some((radius, times)) = config.effect_blur {
+            self.apply_blur(radius, times)?;
+        }
+        if let Some((base, factor)) = config.effect_vignette {
+            self.apply_vignette(base, factor);
+        }
+        Ok(())
+    }
+
+    /// Apply a Gaussian blur effect.
+    pub fn apply_blur(&mut self, radius: u32, times: u32) -> Result<()> {
         if radius == 0 || times == 0 {
-            return;
+            return Ok(());
         }
 
+        let width = self.surface.width();
+        let height = self.surface.height();
+        let stride = self.surface.stride() as usize;
+        let mut data = vec![0u8; stride * height as usize];
+
+        self.surface
+            .with_data(|src| data.copy_from_slice(src))
+            .context("Failed to get surface data")?;
+
+        // Convert to image::RgbaImage for processing
         let mut img: image::ImageBuffer<image::Rgba<u8>, Vec<u8>> =
-            image::ImageBuffer::from_raw(self.width, self.height, self.data.clone())
-                .expect("Failed to create image buffer");
+            image::ImageBuffer::from_raw(width as u32, height as u32, data)
+                .context("Failed to create image buffer")?;
 
         for _ in 0..times {
             let mut rgb_data: Vec<[u8; 3]> =
-                Vec::with_capacity((self.width * self.height) as usize);
+                Vec::with_capacity((width as usize) * (height as usize));
             for pixel in img.pixels() {
                 rgb_data.push([pixel[0], pixel[1], pixel[2]]);
             }
 
             fastblur::gaussian_blur(
                 &mut rgb_data,
-                self.width as usize,
-                self.height as usize,
+                width as usize,
+                height as usize,
                 radius as f32,
             );
 
@@ -60,40 +90,240 @@ impl Screenshot {
             }
         }
 
-        self.data = img.into_raw();
+        // Copy back to surface
+        let new_data = img.into_raw();
+        let mut surface_data = self.surface.data()?;
+        surface_data.copy_from_slice(&new_data);
+        Ok(())
     }
 
+    /// Apply a vignette effect (darken edges).
     pub fn apply_vignette(&mut self, base: f32, factor: f32) {
-        let center_x = self.width as f32 / 2.0;
-        let center_y = self.height as f32 / 2.0;
+        let width = self.surface.width();
+        let height = self.surface.height();
+        let center_x = width as f32 / 2.0;
+        let center_y = height as f32 / 2.0;
         let max_distance = (center_x * center_x + center_y * center_y).sqrt();
 
-        for y in 0..self.height {
-            for x in 0..self.width {
+        let stride = self.surface.stride() as usize;
+        let mut data = vec![0u8; stride * height as usize];
+        self.surface
+            .with_data(|src| data.copy_from_slice(src))
+            .unwrap();
+
+        for y in 0..height {
+            for x in 0..width {
                 let dx = x as f32 - center_x;
                 let dy = y as f32 - center_y;
                 let distance = (dx * dx + dy * dy).sqrt();
                 let vignette_factor = base + (1.0 - base) * (distance / max_distance).powf(factor);
 
-                let index = ((y * self.width + x) * 4) as usize;
+                let index = ((y * width + x) * 4) as usize;
                 for i in 0..3 {
-                    let value = self.data[index + i] as f32 * vignette_factor;
-                    self.data[index + i] = value.clamp(0.0, 255.0) as u8;
+                    let value = data[index + i] as f32 * vignette_factor;
+                    data[index + i] = value.clamp(0.0, 255.0) as u8;
                 }
             }
         }
+
+        let mut surface_data = self.surface.data().unwrap();
+        surface_data.copy_from_slice(&data);
+    }
+}
+
+#[derive(Clone)]
+/// Information about a buffer from the screencopy protocol.
+pub struct BufferInfo {
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+    pub format: wl_shm::Format,
+}
+
+/// Handle to a captured buffer that can be converted to a Cairo surface.
+pub struct ScreencopyBufferHandle {
+    pub buffer: Buffer,
+    pub info: BufferInfo,
+    pub y_invert: bool,
+}
+
+/// Manager for the wlr-screencopy protocol.
+pub struct ScreenshotManager {
+    manager: Option<ZwlrScreencopyManagerV1>,
+}
+
+impl ScreenshotManager {
+    /// Bind to the wlr-screencopy global and create a new manager.
+    ///
+    /// Returns `Ok(Self)` if the protocol is available, otherwise `Err`.
+    pub fn new<D>(globals: &GlobalList, qh: &QueueHandle<D>) -> Result<Self>
+    where
+        D: Dispatch<ZwlrScreencopyManagerV1, ()> + 'static,
+    {
+        let manager = globals
+            .bind::<ZwlrScreencopyManagerV1, _, _>(qh, 1..=3, ())
+            .ok();
+
+        if manager.is_none() {
+            debug!("zwlr_screencopy_manager_v1 not available");
+        }
+
+        Ok(Self { manager })
     }
 
-    pub fn as_image_surface(&self) -> cairo::ImageSurface {
-        let surface = cairo::ImageSurface::create(
-            cairo::Format::ARgb32,
-            self.width as i32,
-            self.height as i32,
-        )
-        .expect("Failed to create image surface");
+    /// Returns `true` if the wlr-screencopy protocol is available.
+    pub fn is_available(&self) -> bool {
+        self.manager.is_some()
+    }
 
-        // TODO: Properly copy pixel data to surface using cairo API
-        // For now, return empty surface
-        surface
+    /// Initiate a screencopy operation for the given output.
+    ///
+    /// This method sends a screencopy request and returns the frame object.
+    /// The frame events will be dispatched to the provided queue's dispatcher
+    /// with the given user data.
+    pub fn capture_output<D>(
+        &self,
+        output: &wl_output::WlOutput,
+        qh: &QueueHandle<D>,
+        user_data: CaptureData,
+    ) -> Result<ZwlrScreencopyFrameV1>
+    where
+        D: Dispatch<ZwlrScreencopyFrameV1, CaptureData> + 'static,
+    {
+        let manager = self.manager.as_ref().context("Screencopy not available")?;
+        let frame = manager.capture_output(0, output, qh, user_data);
+        Ok(frame)
+    }
+
+    /// Convert a captured buffer to a Cairo ImageSurface.
+    pub fn buffer_to_surface(
+        &self,
+        handle: ScreencopyBufferHandle,
+        pool: &mut SlotPool,
+    ) -> Result<ImageSurface> {
+        let info = handle.info;
+        let y_invert = handle.y_invert;
+
+        let canvas = handle
+            .buffer
+            .canvas(pool)
+            .context("Failed to get buffer canvas")?;
+
+        let pixel_width = (info.width * 4) as usize;
+        let stride = info.stride as usize;
+        let height = info.height as usize;
+
+        if stride < pixel_width {
+            anyhow::bail!("Stride smaller than pixel width");
+        }
+
+        let raw_data = {
+            let mut data = vec![0u8; (info.width * info.height * 4) as usize];
+            for row in 0..height {
+                let src_offset = row * stride;
+                let dst_offset = row * pixel_width;
+                data[dst_offset..dst_offset + pixel_width]
+                    .copy_from_slice(&canvas[src_offset..src_offset + pixel_width]);
+            }
+            data
+        };
+
+        let converted_data = match info.format {
+            wayland_client::protocol::wl_shm::Format::Argb8888 => raw_data,
+            wayland_client::protocol::wl_shm::Format::Xbgr8888 => {
+                convert_xbgr8888_to_argb32(&raw_data, info.width as usize, info.height as usize)
+            }
+            wayland_client::protocol::wl_shm::Format::Xrgb8888 => {
+                convert_xrgb8888_to_argb32(&raw_data, info.width as usize, info.height as usize)
+            }
+            _ => {
+                log::warn!("Unsupported format {:?}, using raw data as-is", info.format);
+                raw_data
+            }
+        };
+
+        if y_invert {
+            let mut flipped = vec![0u8; (info.width * info.height * 4) as usize];
+            let src_stride = (info.width * 4) as usize;
+            for row in 0..height {
+                let src_row = height - 1 - row;
+                let src_offset = src_row * src_stride;
+                let dst_offset = row * src_stride;
+                flipped[dst_offset..dst_offset + src_stride]
+                    .copy_from_slice(&converted_data[src_offset..src_offset + src_stride]);
+            }
+            return Ok(ImageSurface::create_for_data(
+                flipped,
+                cairo::Format::ARgb32,
+                info.width as i32,
+                info.height as i32,
+                src_stride as i32,
+            )
+            .context("Failed to create flipped Cairo surface")?);
+        }
+
+        Ok(ImageSurface::create_for_data(
+            converted_data,
+            cairo::Format::ARgb32,
+            info.width as i32,
+            info.height as i32,
+            pixel_width as i32,
+        )
+        .context("Failed to create Cairo surface")?)
+    }
+}
+
+/// Convert Xbgr8888 buffer data to ARGB32 format.
+fn convert_xbgr8888_to_argb32(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let mut result = vec![0u8; width * height * 4];
+    for y in 0..height {
+        for x in 0..width {
+            let src_idx = (y * width + x) * 4;
+            let dst_idx = (y * width + x) * 4;
+            result[dst_idx] = 255;
+            result[dst_idx + 1] = data[src_idx + 2];
+            result[dst_idx + 2] = data[src_idx + 1];
+            result[dst_idx + 3] = data[src_idx];
+        }
+    }
+    result
+}
+
+/// Convert Xrgb8888 buffer data to ARGB32 format.
+fn convert_xrgb8888_to_argb32(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    let mut result = vec![0u8; width * height * 4];
+    for y in 0..height {
+        for x in 0..width {
+            let src_idx = (y * width + x) * 4;
+            let dst_idx = (y * width + x) * 4;
+            result[dst_idx] = 255;
+            result[dst_idx + 1] = data[src_idx + 1];
+            result[dst_idx + 2] = data[src_idx + 2];
+            result[dst_idx + 3] = data[src_idx + 3];
+        }
+    }
+    result
+}
+
+/// User data associated with a screencopy frame request.
+///
+/// Stores intermediate data needed to assemble the final screenshot once
+/// all frame events are received.
+pub struct CaptureData {
+    pub output_idx: usize,
+    pub info: Mutex<Option<BufferInfo>>,
+    pub flags: Mutex<Option<Flags>>,
+    pub buffer: Mutex<Option<Buffer>>,
+}
+
+impl CaptureData {
+    /// Create new capture data for the given output index.
+    pub fn new(output_idx: usize) -> Self {
+        Self {
+            output_idx,
+            info: Mutex::new(None),
+            flags: Mutex::new(None),
+            buffer: Mutex::new(None),
+        }
     }
 }

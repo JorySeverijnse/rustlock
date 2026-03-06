@@ -7,6 +7,9 @@ edition = "2021"
 smithay-client-toolkit = { version = "0.19", features = ["calloop"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+anyhow = "1.0"
+futures = "0.3"
 cairo-rs = { version = "0.20", features = ["png"] }
 image = "0.25"
 fastblur = "0.1"

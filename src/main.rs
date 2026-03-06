@@ -9,10 +9,21 @@ mod util;
 
 use config::Config;
 use lock::LockManager;
+use screenshot::{CaptureData, Screenshot, ScreenshotManager};
+use std::collections::HashSet;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use wayland_client::globals::GlobalList;
+use wayland_client::protocol::wl_output::WlOutput;
+use wayland_client::protocol::wl_surface::WlSurface;
+use wayland_client::Proxy;
+use wayland_client::QueueHandle;
+use wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::{
+    Flags, ZwlrScreencopyFrameV1,
+};
+use wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
 use zeroize::Zeroizing;
 
 fn setup_file_logging() {
@@ -85,7 +96,7 @@ fn lock_wayland_session(
     ctrlc_exit: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<(), Box<dyn Error>> {
     use smithay_client_toolkit::reexports::calloop;
-    
+
     use smithay_client_toolkit::{
         compositor::{CompositorHandler, CompositorState},
         output::{OutputHandler, OutputState},
@@ -119,6 +130,7 @@ fn lock_wayland_session(
         compositor_state: CompositorState,
         output_state: OutputState,
         registry_state: RegistryState,
+        globals: GlobalList,
         session_lock_state: SessionLockState,
         seat_state: SeatState,
         shm_state: Shm,
@@ -131,6 +143,12 @@ fn lock_wayland_session(
         exit: bool,
         auth_tx: Option<channel::Sender<Zeroizing<String>>>,
         unlocking: bool,
+        screenshot_manager: Option<ScreenshotManager>,
+        screenshot_frames: Vec<Option<ZwlrScreencopyFrameV1>>,
+        captured_backgrounds: Vec<Option<cairo::ImageSurface>>,
+        locked_outputs: HashSet<WlOutput>,
+        outputs: Vec<WlOutput>,
+        lock_surface_outputs: Vec<WlOutput>,
     }
 
     impl SessionLockHandler for WaylandLock {
@@ -146,15 +164,22 @@ fn lock_wayland_session(
             log_to_file("Session LOCKED - creating surfaces");
             eprintln!("SESSION LOCKED - creating lock surfaces");
 
-            // Take ownership of session_lock
             let lock_ref = &mut session_lock;
 
-            // Create lock surfaces for all outputs
-            for output in self.output_state.outputs() {
+            let outputs: Vec<WlOutput> = self.output_state.outputs().collect();
+            let output_count = outputs.len();
+
+            self.outputs = outputs.clone();
+            self.screenshot_frames = vec![None; output_count];
+            self.captured_backgrounds = vec![None; output_count];
+
+            for output in &outputs {
                 log_to_file(&format!("Creating lock surface for output"));
                 let surface = self.compositor_state.create_surface(qh);
-                let lock_surface = lock_ref.create_lock_surface(surface, &output, qh);
+                let lock_surface = lock_ref.create_lock_surface(surface, output, qh);
                 self.lock_surfaces.push(lock_surface);
+                self.lock_surface_outputs.push(output.clone());
+                self.locked_outputs.insert(output.clone());
             }
 
             log_to_file(&format!(
@@ -164,8 +189,35 @@ fn lock_wayland_session(
 
             self.session_lock = Some(session_lock);
 
-            if let Ok(mut lock_manager) = self.lock_manager.lock() {
-                lock_manager.initialize_lock_surfaces();
+            if self.config.screenshots {
+                log::info!("Initializing screenshot capture...");
+                match ScreenshotManager::new(&self.globals, qh) {
+                    Ok(manager) => {
+                        self.screenshot_manager = Some(manager);
+                        log::info!("Screenshot manager initialized");
+
+                        for (idx, output) in self.outputs.iter().enumerate() {
+                            log::info!("Starting screenshot capture for output {}...", idx);
+                            match self.screenshot_manager.as_mut().unwrap().capture_output(
+                                output,
+                                qh,
+                                CaptureData::new(idx),
+                            ) {
+                                Ok(frame) => {
+                                    self.screenshot_frames[idx] = Some(frame);
+                                    log::debug!("Screenshot capture initiated for output {}", idx);
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to capture output {}: {}", idx, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Screenshot capture not available: {}", e);
+                        self.screenshot_manager = None;
+                    }
+                }
             }
         }
 
@@ -204,7 +256,29 @@ fn lock_wayland_session(
             eprintln!("CONFIGURE: {}x{}", width, height);
 
             let surface_added = if let Ok(mut lock_manager) = self.lock_manager.lock() {
-                lock_manager.add_surface(width as i32, height as i32)
+                let surface_wl_id = session_lock_surface.wl_surface().id();
+                let output_idx = self
+                    .lock_surfaces
+                    .iter()
+                    .position(|s| s.wl_surface().id() == surface_wl_id);
+
+                if let Some(idx) = output_idx {
+                    if idx < self.lock_surface_outputs.len() {
+                        let output = &self.lock_surface_outputs[idx];
+                        let (width, height) = configure.new_size;
+                        lock_manager.add_surface(width as i32, height as i32, output.clone())
+                    } else {
+                        log::error!(
+                            "lock_surface_outputs index out of bounds: {} vs {}",
+                            idx,
+                            self.lock_surface_outputs.len()
+                        );
+                        false
+                    }
+                } else {
+                    log::error!("Could not find lock surface in self.lock_surfaces");
+                    false
+                }
             } else {
                 false
             };
@@ -216,7 +290,6 @@ fn lock_wayland_session(
             }
 
             log::debug!("Surface added to lock manager");
-            self.lock_surfaces.push(session_lock_surface.clone());
 
             if let Ok(mut lock_manager) = self.lock_manager.lock() {
                 let surface_count = lock_manager.surface_count();
@@ -229,7 +302,36 @@ fn lock_wayland_session(
                 if let Some(locked_surface) = lock_manager.get_surface_mut(surface_count - 1) {
                     locked_surface.set_wayland_surface(session_lock_surface.wl_surface().clone());
 
-                    // Render the surface first
+                    if self.config.screenshots {
+                        let output = locked_surface.output();
+                        let output_idx = self.outputs.iter().position(|o| o.id() == output.id());
+
+                        if let Some(idx) = output_idx {
+                            if let Some(background) = self
+                                .captured_backgrounds
+                                .get_mut(idx)
+                                .and_then(|b| b.take())
+                            {
+                                log::info!(
+                                    "Using captured screenshot background for output {}",
+                                    idx
+                                );
+                                locked_surface.set_background(background);
+                            } else {
+                                log::warn!("No screenshot available for output {}, will render without background", idx);
+                            }
+                        } else {
+                            log::warn!(
+                                "Output not found in self.outputs, cannot assign screenshot"
+                            );
+                        }
+                    }
+                }
+
+                if let Some(locked_surface) = lock_manager.get_surface_mut(surface_count - 1) {
+                    locked_surface.set_wayland_surface(session_lock_surface.wl_surface().clone());
+
+                    // Render the surface
                     locked_surface.renderer.render();
 
                     match locked_surface.renderer.get_pixel_data() {
@@ -364,9 +466,15 @@ fn lock_wayland_session(
             output: wl_output::WlOutput,
         ) {
             log::info!("New output detected: creating lock surface");
+            if self.locked_outputs.contains(&output) {
+                log::debug!("Output already has lock surface, ignoring");
+                return;
+            }
             if let Some(ref session_lock) = self.session_lock {
                 let surface = self.compositor_state.create_surface(qh);
                 let _lock_surface = session_lock.create_lock_surface(surface, &output, qh);
+                self.locked_outputs.insert(output.clone());
+                self.lock_surface_outputs.push(output.clone());
             }
         }
 
@@ -634,6 +742,184 @@ fn lock_wayland_session(
     smithay_client_toolkit::delegate_keyboard!(WaylandLock);
     smithay_client_toolkit::delegate_pointer!(WaylandLock);
 
+    impl wayland_client::Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandLock {
+        fn event(
+            state: &mut Self,
+            _manager: &ZwlrScreencopyManagerV1,
+            _event: <ZwlrScreencopyManagerV1 as wayland_client::Proxy>::Event,
+            _data: &(),
+            _conn: &Connection,
+            _qh: &QueueHandle<Self>,
+        ) {
+            // No events expected from the manager
+        }
+    }
+
+    impl wayland_client::Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
+        fn event(
+            state: &mut Self,
+            frame: &ZwlrScreencopyFrameV1,
+            event: <ZwlrScreencopyFrameV1 as wayland_client::Proxy>::Event,
+            _data: &CaptureData,
+            _conn: &Connection,
+            qh: &QueueHandle<Self>,
+        ) {
+            let output_idx = _data.output_idx;
+            log::debug!("Screencopy event for output {}: {:?}", output_idx, event);
+
+            match event {
+                wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::Event::Buffer {
+                    format,
+                    width,
+                    height,
+                    stride,
+                } => {
+                    log::debug!("Buffer event: {}x{}, stride={}, format={:?}", width, height, stride, format);
+
+                    // Extract format value from the compositor's Buffer event
+                    let format_value = match format {
+                        wayland_client::WEnum::Value(f) => f,
+                        wayland_client::WEnum::Unknown(_) => {
+                            log::error!("Unknown format value");
+                            return;
+                        }
+                    };
+
+                    // Store buffer info including the actual format
+                    if let Ok(mut info_guard) = _data.info.lock() {
+                        *info_guard = Some(screenshot::BufferInfo {
+                            width,
+                            height,
+                            stride,
+                            format: format_value,
+                        });
+                    }
+
+                    // Create SHM buffer with the EXACT format the compositor specified
+                    if let Ok(mut buffer_guard) = _data.buffer.lock() {
+                        if let Ok((buf, _canvas)) = state.pool.create_buffer(
+                            i32::try_from(width).unwrap(),
+                            i32::try_from(height).unwrap(),
+                            i32::try_from(stride).unwrap(),
+                            format_value,
+                        ) {
+                            // Store the buffer for later use in Ready event
+                            *buffer_guard = Some(buf);
+                            log::debug!("Created SHM buffer for screencopy with format {:?}", format_value);
+                            // Immediately send copy request (protocol requires this after buffer creation)
+                            if let Some(buffer) = buffer_guard.as_ref() {
+                                frame.copy(buffer.wl_buffer());
+                                log::debug!("Sent copy request for screenshot");
+                            }
+                        } else {
+                            log::error!("Failed to create SHM buffer");
+                        }
+                    }
+                }
+                wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::Event::Flags { flags } => {
+                    log::debug!("Flags: {:?}", flags);
+                    if let Ok(mut flags_guard) = _data.flags.lock() {
+                        let flags_value = match flags {
+                            wayland_client::WEnum::Value(f) => f,
+                            wayland_client::WEnum::Unknown(_) => {
+                                log::warn!("Unknown flags value");
+                                return;
+                            }
+                        };
+                        *flags_guard = Some(flags_value);
+                    }
+                }
+                wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::Event::Ready { 
+                    tv_sec_hi: _, 
+                    tv_sec_lo: _, 
+                    tv_nsec: _ 
+                } => {
+                    log::info!("Ready event: processing screenshot for output {}", output_idx);
+
+                    // Extract all data from CaptureData
+                    let info_opt = _data.info.lock().ok().and_then(|i| i.clone());
+                    let buffer_opt = _data.buffer.lock().ok().and_then(|mut b| b.take());
+                    let flags_opt = _data.flags.lock().ok().and_then(|f| f.clone());
+
+                    if let (Some(info), Some(buffer), Some(flags)) = (info_opt, buffer_opt, flags_opt) {
+                        // Determine if Y-inversion is needed (Y_INVERT flag is bit 0)
+                        let y_invert = flags.bits() & 1 != 0;
+
+                        let handle = screenshot::ScreencopyBufferHandle {
+                            buffer,
+                            info: screenshot::BufferInfo {
+                                width: info.width,
+                                height: info.height,
+                                stride: info.stride,
+                                format: info.format,
+                            },
+                            y_invert,
+                        };
+
+                        match state.screenshot_manager.as_ref().unwrap().buffer_to_surface(handle, &mut state.pool) {
+                            Ok(surface) => {
+                                // Apply effects if configured
+                                let mut screenshot = Screenshot::new(surface);
+                                if let Err(e) = screenshot.apply_effects(&state.config) {
+                                    log::error!("Failed to apply effects: {}", e);
+                                }
+                                let surface = screenshot.into_inner();
+
+                                // Save screenshot to file for debugging if debug mode enabled
+                                if state.config.debug {
+                                    let path = format!("/tmp/wayrustlock_output{}.png", output_idx);
+                                            match std::fs::File::create(&path) {
+                                                Ok(mut file) => {
+                                                    if let Err(e) = surface.write_to_png(&mut file) {
+                                                        log::error!("Failed to write PNG to {}: {}", path, e);
+                                                    } else {
+                                                        log::info!("Saved screenshot to {}", path);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    log::error!("Failed to create file {}: {}", path, e);
+                                                }
+                                            }
+                                }
+
+                                if output_idx < state.outputs.len() {
+                                    let output = &state.outputs[output_idx];
+                                    if let Ok(mut lock_manager) = state.lock_manager.lock() {
+                                        if let Some(locked_surface) = lock_manager.find_surface_by_output(output) {
+                                            log::debug!("Setting background directly on lock surface for output {}", output_idx);
+                                            locked_surface.set_background(surface);
+                                        } else {
+                                            log::debug!("Storing background in captured_backgrounds for output {}", output_idx);
+                                            state.captured_backgrounds[output_idx] = Some(surface);
+                                        }
+                                    } else {
+                                        log::debug!("Failed to lock manager, storing background");
+                                        state.captured_backgrounds[output_idx] = Some(surface);
+                                    }
+                                } else {
+                                    log::error!("output_idx {} out of bounds (outputs len {})", output_idx, state.outputs.len());
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to convert buffer to surface: {}", e);
+                            }
+                        }
+                    } else {
+                        log::error!("Missing buffer data for Ready event");
+                    }
+
+                    // Clean up frame
+                    frame.destroy();
+                }
+                wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::Event::Failed => {
+                    log::error!("Screenshot capture failed for output {}", output_idx);
+                    frame.destroy();
+                }
+                _ => {}
+            }
+        }
+    }
+
     let conn = Connection::connect_to_env()?;
     let (globals, event_queue) = registry_queue_init(&conn)?;
     let qh: QueueHandle<WaylandLock> = event_queue.handle();
@@ -645,26 +931,32 @@ fn lock_wayland_session(
     let mut state = WaylandLock {
         loop_handle: event_loop.handle(),
         conn: conn.clone(),
+        lock_manager,
+        config,
+        ctrlc_exit: ctrlc_exit.clone(),
+        auth_tx: Some(auth_tx),
         compositor_state: CompositorState::bind(&globals, &qh)?,
         output_state: OutputState::new(&globals, &qh),
         registry_state: RegistryState::new(&globals),
         session_lock_state: SessionLockState::new(&globals, &qh),
         seat_state: SeatState::new(&globals, &qh),
-
         shm_state: Shm::bind(&globals, &qh).map_err(|_| "wl_shm protocol not supported")?,
         pool: SlotPool::new(
-            1920 * 1080 * 4 * 3, // triple buffering for smooth rendering
+            256 * 1024 * 1024, // 256 MB pool to support high-resolution displays and screenshots
             &Shm::bind(&globals, &qh).map_err(|_| "wl_shm protocol not supported")?,
         )
         .map_err(|e| format!("Failed to create slot pool: {:?}", e))?,
+        globals,
         session_lock: None,
         lock_surfaces: Vec::new(),
-        lock_manager,
-        config,
-        ctrlc_exit: ctrlc_exit.clone(),
         exit: false,
-        auth_tx: Some(auth_tx),
         unlocking: false,
+        screenshot_manager: None,
+        screenshot_frames: Vec::new(),
+        captured_backgrounds: Vec::new(),
+        locked_outputs: HashSet::new(),
+        outputs: Vec::new(),
+        lock_surface_outputs: Vec::new(),
     };
 
     state.session_lock = Some(
@@ -747,7 +1039,6 @@ fn run_demonstration_mode(
 
     {
         let mut lock_manager = lock_manager.lock().unwrap();
-        lock_manager.initialize_lock_surfaces();
         log::info!(
             "Initialized {} lock surface(s)",
             lock_manager.surface_count()
