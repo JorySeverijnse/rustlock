@@ -149,6 +149,7 @@ fn lock_wayland_session(
         locked_outputs: HashSet<WlOutput>,
         outputs: Vec<WlOutput>,
         lock_surface_outputs: Vec<WlOutput>,
+        pending_screenshots: usize,
     }
 
     impl SessionLockHandler for WaylandLock {
@@ -172,6 +173,12 @@ fn lock_wayland_session(
             self.outputs = outputs.clone();
             self.screenshot_frames = vec![None; output_count];
             self.captured_backgrounds = vec![None; output_count];
+            self.pending_screenshots = if self.config.screenshots {
+                output_count
+            } else {
+                0
+            };
+            log::debug!("Pending screenshots: {}", self.pending_screenshots);
 
             for output in &outputs {
                 log_to_file(&format!("Creating lock surface for output"));
@@ -909,11 +916,28 @@ fn lock_wayland_session(
                         log::error!("Missing buffer data for Ready event");
                     }
 
+                    // Decrement pending screenshots count
+                    if state.pending_screenshots > 0 {
+                        state.pending_screenshots -= 1;
+                        log::debug!("Screenshot ready, pending_screenshots now: {}", state.pending_screenshots);
+                        if state.pending_screenshots == 0 {
+                            log::info!("All screenshots captured, lock UI will now be displayed");
+                        }
+                    }
+
                     // Clean up frame
                     frame.destroy();
                 }
                 wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_frame_v1::Event::Failed => {
                     log::error!("Screenshot capture failed for output {}", output_idx);
+                    // Decrement pending screenshots count even on failure
+                    if state.pending_screenshots > 0 {
+                        state.pending_screenshots -= 1;
+                        log::debug!("Screenshot failed, pending_screenshots now: {}", state.pending_screenshots);
+                        if state.pending_screenshots == 0 {
+                            log::info!("All screenshot attempts completed (with failures), lock UI will now be displayed");
+                        }
+                    }
                     frame.destroy();
                 }
                 _ => {}
@@ -958,6 +982,7 @@ fn lock_wayland_session(
         locked_outputs: HashSet::new(),
         outputs: Vec::new(),
         lock_surface_outputs: Vec::new(),
+        pending_screenshots: 0,
     };
 
     state.session_lock = Some(
@@ -988,7 +1013,19 @@ fn lock_wayland_session(
     event_loop.handle().insert_source(
         render_timer,
         |_event, _metadata, state: &mut WaylandLock| {
-            log::debug!("Timer tick");
+            log::debug!(
+                "Timer tick, pending_screenshots: {}",
+                state.pending_screenshots
+            );
+            // Skip rendering if we're still waiting for screenshots
+            if state.pending_screenshots > 0 {
+                log::debug!(
+                    "Still waiting for {} screenshots, skipping render",
+                    state.pending_screenshots
+                );
+                return calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(16));
+            }
+
             // Update lock manager (renders to Cairo surfaces)
             if let Ok(mut lock_manager) = state.lock_manager.lock() {
                 lock_manager.update();
