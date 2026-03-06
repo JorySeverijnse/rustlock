@@ -273,34 +273,34 @@ impl ScreenshotManager {
     }
 }
 
-/// Convert Xbgr8888 buffer data to ARGB32 format.
+/// Convert Xbgr8888 buffer data to ARGB32 format (little-endian byte order).
+/// Xbgr8888: 32-bit word 0xXXBBGGRR, memory layout: [R, G, B, X]
+/// ARGB32: 32-bit word 0xAARRGGBB, memory layout: [B, G, R, A]
 fn convert_xbgr8888_to_argb32(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let mut result = vec![0u8; width * height * 4];
-    for y in 0..height {
-        for x in 0..width {
-            let src_idx = (y * width + x) * 4;
-            let dst_idx = (y * width + x) * 4;
-            result[dst_idx] = 255;
-            result[dst_idx + 1] = data[src_idx + 2];
-            result[dst_idx + 2] = data[src_idx + 1];
-            result[dst_idx + 3] = data[src_idx];
-        }
+    let mut result = Vec::with_capacity(width * height * 4);
+    for i in 0..width * height {
+        let src = i * 4;
+        // Source: [R, G, B, X] -> Destination: [B, G, R, A=255]
+        result.push(data[src + 2]); // B
+        result.push(data[src + 1]); // G
+        result.push(data[src]); // R
+        result.push(255); // A
     }
     result
 }
 
-/// Convert Xrgb8888 buffer data to ARGB32 format.
+/// Convert Xrgb8888 buffer data to ARGB32 format (little-endian byte order).
+/// Xrgb8888: 32-bit word 0xXXRRGGBB, memory layout: [B, G, R, X]
+/// ARGB32: 32-bit word 0xAARRGGBB, memory layout: [B, G, R, A]
 fn convert_xrgb8888_to_argb32(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let mut result = vec![0u8; width * height * 4];
-    for y in 0..height {
-        for x in 0..width {
-            let src_idx = (y * width + x) * 4;
-            let dst_idx = (y * width + x) * 4;
-            result[dst_idx] = 255;
-            result[dst_idx + 1] = data[src_idx + 1];
-            result[dst_idx + 2] = data[src_idx + 2];
-            result[dst_idx + 3] = data[src_idx + 3];
-        }
+    let mut result = Vec::with_capacity(width * height * 4);
+    for i in 0..width * height {
+        let src = i * 4;
+        // Source: [B, G, R, X] -> Destination: [B, G, R, A=255]
+        result.push(data[src]); // B
+        result.push(data[src + 1]); // G
+        result.push(data[src + 2]); // R
+        result.push(255); // A
     }
     result
 }
