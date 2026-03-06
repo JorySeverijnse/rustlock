@@ -92,7 +92,7 @@ impl Renderer {
 
     /// Render the current frame
     pub fn render(&mut self) {
-        log::debug!(
+        log::info!(
             "Renderer::render() called, background: {}",
             self.background.is_some()
         );
@@ -103,17 +103,23 @@ impl Renderer {
 
         // Draw background if available
         if let Some(ref background) = self.background {
-            log::debug!("Drawing background (fade_alpha: {})", self.fade_alpha);
+            let size = (background.width(), background.height());
+            log::info!(
+                "✓ Drawing background ({}x{}, fade_alpha: {})",
+                size.0,
+                size.1,
+                self.fade_alpha
+            );
             self.context
                 .set_source_surface(background, 0.0, 0.0)
                 .expect("Failed to set background source");
             self.context
                 .paint_with_alpha(self.fade_alpha)
                 .expect("Failed to draw background");
-            log::debug!("Background drawn");
+            log::info!("✓ Background drawn successfully");
         } else {
             // Draw solid color background (dark gray visible color)
-            log::debug!("No background, drawing solid color");
+            log::warn!("✗ No background available - rendering solid gray!");
             self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
             self.context
                 .paint()

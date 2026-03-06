@@ -124,14 +124,15 @@ impl LockedSurface {
 
         // Set background if available
         if let Some(ref background) = self.background {
-            log::debug!(
-                "Applying background from self.background (size: {}x{})",
-                background.width(),
-                background.height()
+            let size = (background.width(), background.height());
+            log::info!(
+                "✓ Applying background from self.background: {}x{}",
+                size.0,
+                size.1
             );
             self.renderer.set_background(background.clone());
         } else {
-            log::debug!("No background in self.background");
+            log::warn!("✗ No background in self.background - will render solid color!");
         }
 
         self.renderer

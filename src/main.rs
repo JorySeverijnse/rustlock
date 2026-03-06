@@ -865,43 +865,44 @@ fn lock_wayland_session(
 
                         match state.screenshot_manager.as_ref().unwrap().buffer_to_surface(handle, &mut state.pool) {
                             Ok(surface) => {
+                                log::info!("✓ Converted screenshot for output {}: {}x{}", output_idx, surface.width(), surface.height());
                                 // Apply effects if configured
                                 let mut screenshot = Screenshot::new(surface);
                                 if let Err(e) = screenshot.apply_effects(&state.config) {
                                     log::error!("Failed to apply effects: {}", e);
                                 }
                                 let surface = screenshot.into_inner();
+                                log::info!("✓ Screenshot ready for output {}", output_idx);
 
                                 // Save screenshot to file for debugging if debug mode enabled
                                 if state.config.debug {
                                     let path = format!("/tmp/wayrustlock_output{}.png", output_idx);
-                                            match std::fs::File::create(&path) {
-                                                Ok(mut file) => {
-                                                    if let Err(e) = surface.write_to_png(&mut file) {
-                                                        log::error!("Failed to write PNG to {}: {}", path, e);
-                                                    } else {
-                                                        log::info!("Saved screenshot to {}", path);
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    log::error!("Failed to create file {}: {}", path, e);
-                                                }
+                                    match std::fs::File::create(&path) {
+                                        Ok(mut file) => {
+                                            if let Err(e) = surface.write_to_png(&mut file) {
+                                                log::error!("Failed to write PNG to {}: {}", path, e);
+                                            } else {
+                                                log::info!("✓ Saved screenshot to {}", path);
                                             }
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to create file {}: {}", path, e);
+                                        }
+                                    }
                                 }
 
                                 if output_idx < state.outputs.len() {
                                     let output = &state.outputs[output_idx];
                                     if let Ok(mut lock_manager) = state.lock_manager.lock() {
-                    if let Some(locked_surface) = lock_manager.find_surface_by_output(output) {
-                        log::debug!("Setting background directly on lock surface for output {}", output_idx);
-                        locked_surface.set_background(surface);
-                        log::debug!("Background set on surface");
-                    } else {
-                        log::debug!("Storing background in captured_backgrounds for output {}", output_idx);
-                        state.captured_backgrounds[output_idx] = Some(surface);
-                    }
+                                        if let Some(locked_surface) = lock_manager.find_surface_by_output(output) {
+                                            log::info!("✓ Setting background on locked surface for output {}", output_idx);
+                                            locked_surface.set_background(surface);
+                                        } else {
+                                            log::warn!("⚠ No locked surface found for output {}, storing in captured_backgrounds", output_idx);
+                                            state.captured_backgrounds[output_idx] = Some(surface);
+                                        }
                                     } else {
-                                        log::debug!("Failed to lock manager, storing background");
+                                        log::warn!("⚠ Lock manager poisoned, storing in captured_backgrounds for output {}", output_idx);
                                         state.captured_backgrounds[output_idx] = Some(surface);
                                     }
                                 } else {
@@ -909,7 +910,7 @@ fn lock_wayland_session(
                                 }
                             }
                             Err(e) => {
-                                log::error!("Failed to convert buffer to surface: {}", e);
+                                log::error!("✗ Failed to convert buffer to surface: {}", e);
                             }
                         }
                     } else {
