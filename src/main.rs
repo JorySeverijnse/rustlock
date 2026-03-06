@@ -885,13 +885,14 @@ fn lock_wayland_session(
                                 if output_idx < state.outputs.len() {
                                     let output = &state.outputs[output_idx];
                                     if let Ok(mut lock_manager) = state.lock_manager.lock() {
-                                        if let Some(locked_surface) = lock_manager.find_surface_by_output(output) {
-                                            log::debug!("Setting background directly on lock surface for output {}", output_idx);
-                                            locked_surface.set_background(surface);
-                                        } else {
-                                            log::debug!("Storing background in captured_backgrounds for output {}", output_idx);
-                                            state.captured_backgrounds[output_idx] = Some(surface);
-                                        }
+                    if let Some(locked_surface) = lock_manager.find_surface_by_output(output) {
+                        log::debug!("Setting background directly on lock surface for output {}", output_idx);
+                        locked_surface.set_background(surface);
+                        log::debug!("Background set on surface");
+                    } else {
+                        log::debug!("Storing background in captured_backgrounds for output {}", output_idx);
+                        state.captured_backgrounds[output_idx] = Some(surface);
+                    }
                                     } else {
                                         log::debug!("Failed to lock manager, storing background");
                                         state.captured_backgrounds[output_idx] = Some(surface);
@@ -987,6 +988,7 @@ fn lock_wayland_session(
     event_loop.handle().insert_source(
         render_timer,
         |_event, _metadata, state: &mut WaylandLock| {
+            log::debug!("Timer tick");
             // Update lock manager (renders to Cairo surfaces)
             if let Ok(mut lock_manager) = state.lock_manager.lock() {
                 lock_manager.update();
@@ -995,9 +997,15 @@ fn lock_wayland_session(
                     if let Some(_wl_surface) = surface.wayland_surface() {
                         if let Err(e) = surface.commit(&mut state.pool) {
                             log::error!("Failed to commit surface: {:?}", e);
+                        } else {
+                            log::debug!("Committed surface");
                         }
+                    } else {
+                        log::debug!("Surface has no wayland_surface");
                     }
                 }
+            } else {
+                log::error!("Failed to lock lock_manager mutex - poisoned?");
             }
             // Reschedule timer to fire again in 16ms (60fps)
             calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(16))

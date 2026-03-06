@@ -92,20 +92,28 @@ impl Renderer {
 
     /// Render the current frame
     pub fn render(&mut self) {
+        log::debug!(
+            "Renderer::render() called, background: {}",
+            self.background.is_some()
+        );
+
         // Clear the surface - draw a VISIBLE color (dark gray) instead of black
         self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
         self.context.paint().expect("Failed to clear surface");
 
         // Draw background if available
         if let Some(ref background) = self.background {
+            log::debug!("Drawing background (fade_alpha: {})", self.fade_alpha);
             self.context
                 .set_source_surface(background, 0.0, 0.0)
                 .expect("Failed to set background source");
             self.context
                 .paint_with_alpha(self.fade_alpha)
                 .expect("Failed to draw background");
+            log::debug!("Background drawn");
         } else {
             // Draw solid color background (dark gray visible color)
+            log::debug!("No background, drawing solid color");
             self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
             self.context
                 .paint()

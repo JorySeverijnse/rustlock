@@ -72,6 +72,11 @@ impl LockedSurface {
 
     /// Update the surface state (called on each frame)
     pub fn update(&mut self) {
+        log::debug!(
+            "LockedSurface::update() called, background: {}",
+            self.background.is_some()
+        );
+
         // Update timers
         self.input_handler.update();
 
@@ -81,21 +86,26 @@ impl LockedSurface {
             let fade_duration = std::time::Duration::from_secs_f32(self.config.fade_in);
             self.fade_alpha = (elapsed.as_secs_f64() / fade_duration.as_secs_f64()).min(1.0);
             self.renderer.set_fade_alpha(self.fade_alpha);
+            log::debug!("Fade alpha updated: {}", self.fade_alpha);
         }
 
         // Update visual feedback
         if self.input_handler.should_show_wrong_password() && !self.wrong_password_shown {
             self.renderer.show_wrong_password();
             self.wrong_password_shown = true;
+            log::debug!("Showing wrong password feedback");
         } else if !self.input_handler.should_show_wrong_password() && self.wrong_password_shown {
             self.wrong_password_shown = false;
+            log::debug!("Hiding wrong password feedback");
         }
 
         if self.input_handler.should_show_key_highlight() && !self.key_highlight_shown {
             self.renderer.show_key_highlight();
             self.key_highlight_shown = true;
+            log::debug!("Showing key highlight");
         } else if !self.input_handler.should_show_key_highlight() && self.key_highlight_shown {
             self.key_highlight_shown = false;
+            log::debug!("Hiding key highlight");
         }
 
         // Handle temp screenshot (peek feature)
@@ -104,15 +114,24 @@ impl LockedSurface {
             // For now, we'll just set a different background alpha
             self.renderer.set_fade_alpha(0.3); // Semi-transparent
             self.temp_screenshot_shown = true;
+            log::debug!("Showing temp screenshot (peek)");
         } else if !self.input_handler.should_show_temp_screenshot() && self.temp_screenshot_shown {
             // Restore normal fade alpha
             self.renderer.set_fade_alpha(self.fade_alpha);
             self.temp_screenshot_shown = false;
+            log::debug!("Restored normal fade alpha after peek");
         }
 
         // Set background if available
         if let Some(ref background) = self.background {
+            log::debug!(
+                "Applying background from self.background (size: {}x{})",
+                background.width(),
+                background.height()
+            );
             self.renderer.set_background(background.clone());
+        } else {
+            log::debug!("No background in self.background");
         }
 
         self.renderer
