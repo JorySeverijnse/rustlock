@@ -103,6 +103,28 @@ The binary will be available at `target/release/rustlock`.
 
 ---
 
+## ✅ Completed
+
+- [x] PAM-based authentication
+- [x] Grace period (any key unlocks within N seconds)
+- [x] Screenshot capture with blur/vignette effects
+- [x] Configuration file support (`~/.config/rustlock/config.toml`)
+- [x] Debug logging to `~/.rustlock.log`
+- [x] Clock and date display
+- [x] Password indicator ring with rotating highlights
+
+## 🚧 TODO
+
+- [ ] Don't hardcode screen resolution (detect dynamically)
+- [ ] Add multi-monitor support (handle multiple outputs)
+- [ ] Automatically install PAM configuration file
+- [ ] Configuration file schema validation
+- [ ] Additional visual effects (pixelate, swirl, etc.)
+- [ ] Theme/profile support with presets
+- [ ] Wayland protocol stability updates
+
+---
+
 ## 📄 License
 
 AGPL v3+
