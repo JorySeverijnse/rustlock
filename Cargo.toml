@@ -1,7 +1,7 @@
 [package]
 name = "rustlock"
-version = "0.1.0"
-edition = "2021"
+version = "0.9.0"
+edition = "2026"
 
 [dependencies]
 smithay-client-toolkit = { version = "0.19", features = ["calloop"] }

@@ -1,31 +1,39 @@
-# rustlock
+# 🔒 RustLock
+
+[![License](https://img.shields.io/badge/license-AGPL--3.0%2B-blue.svg)](https://github.com/yourusername/rustlock/blob/main/LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/yourusername/rustlock/releases)
+[![Updated](https://img.shields.io/badge/updated-2026--03--07-blue.svg)](https://github.com/yourusername/rustlock/commits/main)
 
 A high-performance Wayland screen locker written in Rust, inspired by `swaylock-effects`.
 
-## Features
+---
 
-- **Performance**: Written in safe Rust with minimal dependencies
-- **Visual Effects**:
+## ✨ Features
+
+- ⚡ **Performance**: Written in safe Rust with minimal dependencies
+- 🎨 **Visual Effects**:
   - Gaussian blur (configurable radius and passes)
   - Vignette effect (configurable base and factor)
   - Smooth fade-in animation
-- **Password Indicator**:
+- 🔐 **Password Indicator**:
   - Circular ring with configurable radius and thickness
   - Dynamic key highlight segments that rotate with each keystroke
   - Customizable colors (ring, inside, separator, highlight)
-- **Information Display**:
+- 🕐 **Information Display**:
   - Centered clock (HH:MM format)
   - Full date
   - System uptime
-- **Screenshot Support**:
+- 📸 **Screenshot Support**:
   - Captures desktop background before locking
   - Applies visual effects to background
- - **Authentication**:
-   - PAM-based authentication
-   - Configurable grace period (any key press within N seconds unlocks without password)
-- **Logging**: Verbose debug logs written to `~/.rustlock.log`
+- 🔑 **Authentication**:
+  - PAM-based authentication
+  - Configurable grace period (any key press within N seconds unlocks without password)
+- 📝 **Logging**: Verbose debug logs written to `~/.rustlock.log`
 
-## Usage
+---
+
+## 🚀 Usage
 
 ### Basic Example
 
@@ -53,7 +61,9 @@ rustlock \
     --fade-in 0.2
 ```
 
-## Configuration
+---
+
+## ⚙️ Configuration
 
 Options can be provided via command line or a configuration file at `~/.config/rustlock/config.toml`. CLI arguments take precedence.
 
@@ -81,7 +91,9 @@ Options can be provided via command line or a configuration file at `~/.config/r
 | `--log-file` | Write logs to `~/.rustlock.log` |
 | `--temp-screenshot` | Enable peek feature (press 'p' to temporarily show background) |
 
-## Installation
+---
+
+## 📦 Installation
 
 ```bash
 cargo build --release
@@ -89,6 +101,8 @@ cargo build --release
 
 The binary will be available at `target/release/rustlock`.
 
-## License
+---
 
-MIT / Apache 2.0
+## 📄 License
+
+AGPL v3+
