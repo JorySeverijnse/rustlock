@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 
 pkgs.rustPlatform.buildRustPackage {
-  pname = "wayrustlock";
+  pname = "rustlock";
   version = "0.1.0";
   src = ./.;
   cargoLock = { lockFile = ./Cargo.lock; };

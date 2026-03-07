@@ -1,35 +1,42 @@
-# wayrustlock
+# rustlock
 
-A premium, high-performance Wayland screen locker written in Rust, designed to replicate and exceed the capabilities of `swaylock-effects` while ensuring stability on modern compositors like Niri and Sway.
+A high-performance Wayland screen locker written in Rust, inspired by `swaylock-effects`.
 
 ## Features
 
-- **Blazing Fast Performance:** Written in 100% safe Rust for maximum efficiency and security.
-- **Advanced Visual Effects:**
-  - **Gaussian Blur:** Highly optimized blur effect for your desktop background.
-  - **Vignette:** Add a professional vignette effect to darken the edges of your screen.
-  - **Fade-in Animation:** Smooth transition from your desktop to the lock screen.
-- **Iconic swaylock-effects UI:**
-  - **Dynamic Rotating Highlights:** Premium visual feedback as you type, with segments that appear at random angles and rotate dynamically.
-  - **Internal Information Hub:** A perfectly centered clock, date, and system uptime indicator inside the ring.
-  - **Custom Colors:** Full control over ring, inside, separator, and highlight colors.
-- **Robust Logic:**
-  - **Niri Compatibility:** Fixed protocol violations that cause red screens on Niri.
-  - **Pre-lock Screenshot:** Captures your desktop *before* locking to ensure visual effects work perfectly even if the compositor hides surfaces immediately.
-  - **Grace Period:** Configurable unlock grace period for convenience.
-  - **Safe Exit:** Always waits for the compositor's confirmation before exiting, preventing session corruption.
-- **Permanent Logging:** Verbose debug logs are always captured in `~/.wayrustlock.log` for immediate troubleshooting.
+- **Performance**: Written in safe Rust with minimal dependencies
+- **Visual Effects**:
+  - Gaussian blur (configurable radius and passes)
+  - Vignette effect (configurable base and factor)
+  - Smooth fade-in animation
+- **Password Indicator**:
+  - Circular ring with configurable radius and thickness
+  - Dynamic key highlight segments that rotate with each keystroke
+  - Customizable colors (ring, inside, separator, highlight)
+- **Information Display**:
+  - Centered clock (HH:MM format)
+  - Full date
+  - System uptime
+- **Screenshot Support**:
+  - Captures desktop background before locking
+  - Applies visual effects to background
+ - **Authentication**:
+   - PAM-based authentication
+   - Configurable grace period (any key press within N seconds unlocks without password)
+- **Logging**: Verbose debug logs written to `~/.rustlock.log`
 
 ## Usage
 
-### Basic Command
+### Basic Example
+
 ```bash
-wayrustlock --screenshots --effect-blur 7x5 --effect-vignette 0.5:0.5
+rustlock --screenshots --effect-blur 7x5 --effect-vignette 0.5:0.5
 ```
 
-### Full Configuration Example
+### Full Configuration
+
 ```bash
-wayrustlock \
+rustlock \
     --screenshots \
     --clock \
     --indicator \
@@ -46,36 +53,41 @@ wayrustlock \
     --fade-in 0.2
 ```
 
-## Configuration File
+## Configuration
 
-You can also provide settings via a configuration file located at `~/.config/wayrustlock/config.toml`. Note that CLI arguments always take precedence over the config file.
+Options can be provided via command line or a configuration file at `~/.config/rustlock/config.toml`. CLI arguments take precedence.
 
-## Options
+### Options
 
 | Option | Description |
 |--------|-------------|
-| `--screenshots` | Enable desktop background capture. |
-| `--clock` | Show the centered clock and uptime. |
-| `--indicator` | Show the password indicator ring. |
-| `--indicator-radius` | Radius of the indicator ring (default: 100). |
-| `--indicator-thickness` | Thickness of the indicator ring (default: 7). |
-| `--effect-blur` | Gaussian blur settings (e.g., `7x5` for radius 7, 5 passes). |
-| `--effect-vignette` | Vignette settings (e.g., `0.5:0.5` for base:factor). |
-| `--ring-color` | Color of the outer ring (RRGGBB[AA]). |
-| `--inside-color` | Color of the inner circle (RRGGBB[AA]). |
-| `--key-hl-color` | Color of the key highlight segments (RRGGBB[AA]). |
-| `--grace` | Unlock grace period in seconds (default: 2). |
-| `--fade-in` | Fade-in animation duration in seconds (default: 0.2). |
+| `--screenshots` | Capture desktop background before locking |
+| `--clock` | Display centered clock and date |
+| `--indicator` | Show password entry ring (default: true) |
+| `--indicator-radius <N>` | Ring radius in pixels (default: 100) |
+| `--indicator-thickness <N>` | Ring thickness in pixels (default: 7) |
+| `--effect-blur <R>x<P>` | Gaussian blur: radius x passes (e.g., `7x5`) |
+| `--effect-vignette <B>:<F>` | Vignette: base:factor (e.g., `0.5:0.5`) |
+| `--ring-color <RRGGBB[AA]>` | Outer ring color (hex, optional alpha) |
+| `--key-hl-color <RRGGBB[AA]>` | Key highlight segment color |
+| `--line-color <RRGGBB[AA]>` | Separator line color |
+| `--inside-color <RRGGBB[AA]>` | Inner circle color |
+| `--separator-color <RRGGBB[AA]>` | Ring separator color |
+| `--grace <SECONDS>` | Grace period in seconds (default: 2) |
+| `--fade-in <SECONDS>` | Fade-in animation duration (default: 0.2) |
+| `--pam-service <NAME>` | PAM service name (default: "rustlock") |
+| `--config <PATH>` | Path to config file |
+| `--debug` | Enable debug logging |
+| `--log-file` | Write logs to `~/.rustlock.log` |
+| `--temp-screenshot` | Enable peek feature (press 'p' to temporarily show background) |
 
 ## Installation
-
-Ensure you have a Rust toolchain and the necessary Wayland development libraries installed, then run:
 
 ```bash
 cargo build --release
 ```
 
-The binary will be available at `target/release/wayrustlock`.
+The binary will be available at `target/release/rustlock`.
 
 ## License
 

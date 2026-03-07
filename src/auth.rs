@@ -7,7 +7,7 @@ use smithay_client_toolkit::reexports::{calloop::channel, calloop::EventLoop};
 use users::get_current_username;
 use zeroize::Zeroizing;
 
-const SERVICE_NAME: &str = "wayrustlock";
+const SERVICE_NAME: &str = "rustlock";
 
 pub struct LockConversation {
     pub password: Option<Zeroizing<String>>,
@@ -36,12 +36,6 @@ impl pam_client::ConversationHandler for LockConversation {
 }
 
 pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channel::Channel<bool>) {
-    struct AuthLoopState {
-        auth_res_send: channel::Sender<bool>,
-        main_closed: bool,
-        context: pam_client::Context<LockConversation>,
-    }
-
     let username = get_current_username()
         .expect("Failed to get username")
         .to_str()
@@ -49,7 +43,7 @@ pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channe
         .to_string();
 
     let conversation = LockConversation { password: None };
-    let context = Context::new(SERVICE_NAME, Some(username.as_str()), conversation)
+    let _context = Context::new(SERVICE_NAME, Some(username.as_str()), conversation)
         .expect("Failed to initialize PAM context");
     debug!("Prepared to authenticate user '{}'", username);
 
@@ -57,35 +51,33 @@ pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channe
     let (auth_res_send, auth_res_recv) = channel::channel::<bool>();
 
     thread::spawn(move || {
-        let mut event_loop: EventLoop<AuthLoopState> = EventLoop::try_new().unwrap();
+        let mut event_loop: EventLoop<()> = EventLoop::try_new().unwrap();
         event_loop
             .handle()
-            .insert_source(auth_req_recv, |evt, _metadata, state| match evt {
+            .insert_source(auth_req_recv, |evt, _metadata, _state| match evt {
                 channel::Event::Msg(password) => {
-                    state.context.conversation_mut().password = Some(password);
-                    let status = match state.context.authenticate(Flag::NONE) {
-                        Ok(()) => true,
+                    let conversation = LockConversation {
+                        password: Some(password),
+                    };
+                    let mut context =
+                        Context::new(SERVICE_NAME, Some(username.as_str()), conversation)
+                            .expect("Failed to initialize PAM context");
+                    match context.authenticate(Flag::NONE) {
+                        Ok(()) => {
+                            auth_res_send.send(true).unwrap();
+                        }
                         Err(err) => {
                             error!("Pam authenticate failed with {:?}", err);
-                            false
+                            auth_res_send.send(false).unwrap();
                         }
-                    };
-                    state.auth_res_send.send(status).unwrap();
+                    }
                 }
-                channel::Event::Closed => state.main_closed = true,
+                channel::Event::Closed => {}
             })
             .unwrap();
 
-        let mut state = AuthLoopState {
-            auth_res_send,
-            main_closed: false,
-            context,
-        };
-
-        while !state.main_closed {
-            event_loop
-                .dispatch(None, &mut state)
-                .expect("Failed to run");
+        loop {
+            event_loop.dispatch(None, &mut ()).expect("Failed to run");
         }
     });
 

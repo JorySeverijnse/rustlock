@@ -57,7 +57,7 @@ pub struct Config {
     #[arg(long)]
     pub debug: bool,
 
-    /// Write verbose logs to ~/.wayrustlock.log
+    /// Write verbose logs to ~/.rustlock.log
     #[arg(long)]
     pub log_file: bool,
 
@@ -69,18 +69,18 @@ pub struct Config {
 impl Config {
     pub fn load() -> Self {
         let cli_config = Config::parse();
-        
+
         // Use path from CLI if provided, otherwise default
         let config_path = cli_config.config.clone().unwrap_or_else(|| {
             let mut path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
-            path.push(".config/wayrustlock/config.toml");
+            path.push(".config/rustlock/config.toml");
             path
         });
 
         if config_path.exists() {
             if let Ok(file_content) = std::fs::read_to_string(&config_path) {
                 if let Ok(_file_config) = toml::from_str::<Config>(&file_content) {
-                    return cli_config; 
+                    return cli_config;
                 }
             }
         }

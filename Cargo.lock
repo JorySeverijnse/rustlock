@@ -1591,6 +1591,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cairo-rs",
+ "chrono",
+ "clap",
+ "env_logger",
+ "fastblur",
+ "futures",
+ "image",
+ "log",
+ "pam-client",
+ "secstr",
+ "serde",
+ "smithay-client-toolkit",
+ "toml 1.0.3+spec-1.1.0",
+ "users",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "xkbcommon",
+ "zeroize",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2083,32 +2109,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6dbfc3ac5ef974c92a2235805cc0114033018ae1290a72e474aa8b28cbbdfd"
 dependencies = [
  "pkg-config",
-]
-
-[[package]]
-name = "wayrustlock"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cairo-rs",
- "chrono",
- "clap",
- "env_logger",
- "fastblur",
- "futures",
- "image",
- "log",
- "pam-client",
- "secstr",
- "serde",
- "smithay-client-toolkit",
- "toml 1.0.3+spec-1.1.0",
- "users",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-wlr",
- "xkbcommon",
- "zeroize",
 ]
 
 [[package]]
