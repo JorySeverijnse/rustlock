@@ -57,6 +57,10 @@ pub struct Config {
     #[arg(long)]
     pub debug: bool,
 
+    /// Write verbose logs to ~/.wayrustlock.log
+    #[arg(long)]
+    pub log_file: bool,
+
     /// Show screen temporarily when a key is pressed (like swaylock-effects peek)
     #[arg(long)]
     pub temp_screenshot: bool,
@@ -64,23 +68,23 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> Self {
-        let mut config = Config::parse();
+        let cli_config = Config::parse();
+        
+        // Use path from CLI if provided, otherwise default
+        let config_path = cli_config.config.clone().unwrap_or_else(|| {
+            let mut path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+            path.push(".config/wayrustlock/config.toml");
+            path
+        });
 
-        if let Some(config_path) = &config.config {
-            if let Ok(file_content) = std::fs::read_to_string(config_path) {
-                if let Ok(file_config) = toml::from_str::<Config>(&file_content) {
-                    config = file_config;
-                } else {
-                    eprintln!(
-                        "Warning: Failed to parse config file {}",
-                        config_path.display()
-                    );
+        if config_path.exists() {
+            if let Ok(file_content) = std::fs::read_to_string(&config_path) {
+                if let Ok(_file_config) = toml::from_str::<Config>(&file_content) {
+                    return cli_config; 
                 }
-            } else {
-                eprintln!("Warning: Config file {} not found", config_path.display());
             }
         }
 
-        config
+        cli_config
     }
 }

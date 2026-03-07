@@ -28,11 +28,6 @@ impl Screenshot {
         Self { surface }
     }
 
-    /// Get a reference to the underlying surface.
-    pub fn surface(&self) -> &ImageSurface {
-        &self.surface
-    }
-
     /// Consume the screenshot and return the underlying Cairo surface.
     pub fn into_inner(self) -> ImageSurface {
         self.surface
@@ -169,11 +164,6 @@ impl ScreenshotManager {
         }
 
         Ok(Self { manager })
-    }
-
-    /// Returns `true` if the wlr-screencopy protocol is available.
-    pub fn is_available(&self) -> bool {
-        self.manager.is_some()
     }
 
     /// Initiate a screencopy operation for the given output.

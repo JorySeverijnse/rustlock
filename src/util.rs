@@ -38,23 +38,3 @@ pub fn parse_vignette_effect(s: &str) -> Result<(f32, f32), String> {
     let factor = parts[1].parse().map_err(|_| "Invalid factor")?;
     Ok((base, factor))
 }
-
-/// Convert hex color string to RGBA color struct
-pub fn hex_to_rgba(hex: &str) -> Color {
-    let (r, g, b, a) = parse_hex_color(hex).unwrap_or((0.0, 0.0, 0.0, 1.0));
-    Color {
-        r: (r * 255.0) as u8,
-        g: (g * 255.0) as u8,
-        b: (b * 255.0) as u8,
-        a: (a * 255.0) as u8,
-    }
-}
-
-/// RGBA color struct
-#[derive(Debug, Clone, Copy)]
-pub struct Color {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}

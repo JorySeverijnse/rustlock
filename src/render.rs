@@ -2,7 +2,6 @@ use cairo::{Context, Format, ImageSurface};
 use std::time::Instant;
 
 use crate::config::Config;
-use crate::util::Color;
 
 /// Cairo-based renderer for the lock screen
 pub struct Renderer {
@@ -16,23 +15,18 @@ pub struct Renderer {
     key_highlight_shown: bool,
     wrong_password_start: Option<Instant>,
     key_highlight_start: Option<Instant>,
+    key_highlight_angle: f64,
     background: Option<ImageSurface>,
     password_display: String,
+    uptime_cache: String,
+    last_uptime_update: Option<Instant>,
+    caps_lock: bool,
 }
 
 impl Renderer {
-    /// Convert color tuple to Color struct
-    fn tuple_to_color(&self, color: (f64, f64, f64, f64)) -> Color {
-        Color {
-            r: (color.0 * 255.0) as u8,
-            g: (color.1 * 255.0) as u8,
-            b: (color.2 * 255.0) as u8,
-            a: (color.3 * 255.0) as u8,
-        }
-    }
-
     /// Create a new renderer with the given dimensions and configuration
     pub fn new(width: i32, height: i32, config: Config) -> Self {
+        log::debug!("Renderer::new({}, {}, ...) called", width, height);
         let surface = ImageSurface::create(Format::ARgb32, width, height)
             .expect("Failed to create Cairo surface");
         let context = Context::new(&surface).expect("Failed to create Cairo context");
@@ -48,13 +42,18 @@ impl Renderer {
             key_highlight_shown: false,
             wrong_password_start: None,
             key_highlight_start: None,
+            key_highlight_angle: 0.0,
             background: None,
             password_display: String::new(),
+            uptime_cache: String::new(),
+            last_uptime_update: None,
+            caps_lock: false,
         }
     }
 
     /// Resize the renderer to new dimensions
     pub fn resize(&mut self, width: i32, height: i32) {
+        log::debug!("Renderer::resize({}, {}) called", width, height);
         self.width = width;
         self.height = height;
 
@@ -83,6 +82,15 @@ impl Renderer {
     pub fn show_key_highlight(&mut self) {
         self.key_highlight_shown = true;
         self.key_highlight_start = Some(Instant::now());
+
+        // Generate ONE random angle for this highlight
+        use std::time::SystemTime;
+        let seed = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64;
+        let random_val = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        self.key_highlight_angle = ((random_val % 360) as f64).to_radians();
     }
 
     /// Set the password display string (masked)
@@ -92,61 +100,42 @@ impl Renderer {
 
     /// Render the current frame
     pub fn render(&mut self) {
-        log::info!(
-            "Renderer::render() called, background: {}",
-            self.background.is_some()
-        );
-
-        // Clear the surface - draw a VISIBLE color (dark gray) instead of black
-        self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
+        // Clear the surface
+        self.context.new_path();
+        self.context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
         self.context.paint().expect("Failed to clear surface");
 
-        // Draw background if available
+        // Draw background
         if let Some(ref background) = self.background {
-            let size = (background.width(), background.height());
-            log::info!(
-                "✓ Drawing background ({}x{}, fade_alpha: {})",
-                size.0,
-                size.1,
-                self.fade_alpha
-            );
+            self.context.new_path();
             self.context
                 .set_source_surface(background, 0.0, 0.0)
-                .expect("Failed to set background source");
+                .expect("Failed to set source");
             self.context
                 .paint_with_alpha(self.fade_alpha)
-                .expect("Failed to draw background");
-            log::info!("✓ Background drawn successfully");
-        } else {
-            // Draw solid color background (dark gray visible color)
-            log::warn!("✗ No background available - rendering solid gray!");
-            self.context.set_source_rgba(0.15, 0.15, 0.15, 1.0);
-            self.context
-                .paint()
-                .expect("Failed to draw solid background");
+                .expect("Failed to paint");
         }
 
-        // Draw clock if enabled
-        if self.config.clock {
-            self.draw_clock();
-        }
-
-        // Draw indicator if enabled
         if self.config.indicator {
             self.draw_indicator();
         }
 
-        // Draw password display (if not empty)
+        if self.config.clock {
+            self.draw_clock();
+        }
+
         if !self.password_display.is_empty() {
             self.draw_password_display();
         }
 
-        // Draw wrong password feedback if active
+        if self.caps_lock {
+            self.draw_caps_lock_indicator();
+        }
+
         if self.wrong_password_shown {
             self.draw_wrong_password_feedback();
         }
 
-        // Draw key highlight feedback if active
         if self.key_highlight_shown {
             self.draw_key_highlight_feedback();
         }
@@ -154,96 +143,79 @@ impl Renderer {
         self.update_feedback_timers();
     }
 
-    /// Get the rendered image surface
-    pub fn as_image_surface(&self) -> &ImageSurface {
-        &self.surface
-    }
-
     /// Get raw pixel data from the surface (ARGB32 format)
     pub fn get_pixel_data(&self) -> Result<Vec<u8>, cairo::BorrowError> {
         let stride = self.surface.stride() as usize;
         let height = self.height as usize;
-
         let mut data = vec![0u8; stride * height];
         self.surface.with_data(|src| {
             data.copy_from_slice(src);
         })?;
-
         Ok(data)
     }
 
-    /// Get surface dimensions and stride
     pub fn surface_info(&self) -> (i32, i32, i32) {
         (self.width, self.height, self.surface.stride())
     }
 
-    /// Draw the clock in the center of the screen
+    fn update_uptime(&mut self) {
+        let now = Instant::now();
+        if let Some(last) = self.last_uptime_update {
+            if now.duration_since(last).as_secs() < 10 {
+                return;
+            }
+        }
+        let uptime_secs = std::fs::read_to_string("/proc/uptime")
+            .ok()
+            .and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok())
+            .unwrap_or(0.0) as u64;
+        self.uptime_cache = format!("up {}h {}m", uptime_secs / 3600, (uptime_secs % 3600) / 60);
+        self.last_uptime_update = Some(now);
+    }
+
     fn draw_clock(&self) {
         use chrono::Local;
-
         let now = Local::now();
         let time_str = now.format("%H:%M").to_string();
         let date_str = now.format("%A, %B %d").to_string();
+        let center_x = self.width as f64 / 2.0;
+        let center_y = self.height as f64 / 2.0;
 
-        self.context.set_font_size(72.0);
+        self.context.new_path();
         self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
-
-        // Center the text
-        let extents = self
-            .context
-            .text_extents(&time_str)
-            .expect("Failed to get text extents");
-        let x = (self.width as f64 - extents.width()) / 2.0;
-        let y = (self.height as f64 / 2.0) - extents.height() / 2.0;
-
-        self.context.move_to(x, y);
+        self.context.set_font_size(48.0);
+        let te = self.context.text_extents(&time_str).unwrap();
         self.context
-            .show_text(&time_str)
-            .expect("Failed to draw time");
+            .move_to(center_x - te.width() / 2.0, center_y + te.height() / 4.0);
+        self.context.show_text(&time_str).unwrap();
 
-        // Draw date below time
-        self.context.set_font_size(24.0);
-        let date_extents = self
-            .context
-            .text_extents(&date_str)
-            .expect("Failed to get date extents");
-        let date_x = (self.width as f64 - date_extents.width()) / 2.0;
-        let date_y = y + extents.height() + 20.0;
+        self.context.new_path();
+        self.context.set_font_size(14.0);
+        let de = self.context.text_extents(&date_str).unwrap();
+        self.context.move_to(
+            center_x - de.width() / 2.0,
+            center_y + te.height() / 4.0 + 25.0,
+        );
+        self.context.show_text(&date_str).unwrap();
 
-        self.context.move_to(date_x, date_y);
-        self.context
-            .show_text(&date_str)
-            .expect("Failed to draw date");
+        self.context.new_path();
+        let ue = self.context.text_extents(&self.uptime_cache).unwrap();
+        self.context.move_to(
+            center_x - ue.width() / 2.0,
+            center_y + te.height() / 4.0 + 43.0,
+        );
+        self.context.show_text(&self.uptime_cache).unwrap();
     }
 
-    /// Draw the password indicator ring
     fn draw_indicator(&self) {
         let center_x = self.width as f64 / 2.0;
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
         let thickness = self.config.indicator_thickness as f64;
 
-        // Draw outer ring
-        let ring_color = self.tuple_to_color(self.config.ring_color);
-        self.context.set_source_rgba(
-            ring_color.r as f64 / 255.0,
-            ring_color.g as f64 / 255.0,
-            ring_color.b as f64 / 255.0,
-            ring_color.a as f64 / 255.0 * self.fade_alpha,
-        );
-        self.context.set_line_width(thickness);
-        self.context
-            .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
-        self.context.stroke().expect("Failed to draw ring");
-
-        // Draw inside fill
-        let inside_color = self.tuple_to_color(self.config.inside_color);
-        self.context.set_source_rgba(
-            inside_color.r as f64 / 255.0,
-            inside_color.g as f64 / 255.0,
-            inside_color.b as f64 / 255.0,
-            inside_color.a as f64 / 255.0 * self.fade_alpha,
-        );
+        self.context.new_path();
+        let (r, g, b, a) = self.config.inside_color;
+        self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
         self.context.arc(
             center_x,
             center_y,
@@ -251,62 +223,75 @@ impl Renderer {
             0.0,
             2.0 * std::f64::consts::PI,
         );
-        self.context.fill().expect("Failed to fill inside");
+        self.context.fill().unwrap();
 
-        // Draw separator line
-        let separator_color = self.tuple_to_color(self.config.separator_color);
-        if separator_color.a > 0 {
-            self.context.set_source_rgba(
-                separator_color.r as f64 / 255.0,
-                separator_color.g as f64 / 255.0,
-                separator_color.b as f64 / 255.0,
-                separator_color.a as f64 / 255.0 * self.fade_alpha,
+        let (lr, lg, lb, la) = self.config.line_color;
+        if la > 0.0 {
+            self.context.new_path();
+            self.context
+                .set_source_rgba(lr, lg, lb, la * self.fade_alpha);
+            self.context.set_line_width(1.0);
+            self.context.arc(
+                center_x,
+                center_y,
+                radius - thickness / 2.0,
+                0.0,
+                2.0 * std::f64::consts::PI,
             );
+            self.context.stroke().unwrap();
+        }
+
+        self.context.new_path();
+        let (r, g, b, a) = self.config.ring_color;
+        self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
+        self.context.set_line_width(thickness);
+        self.context
+            .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
+        self.context.stroke().unwrap();
+
+        let (r, g, b, a) = self.config.separator_color;
+        if a > 0.0 {
+            self.context.new_path();
+            self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
             self.context.set_line_width(1.0);
             self.context.move_to(center_x - radius, center_y);
             self.context.line_to(center_x + radius, center_y);
-            self.context.stroke().expect("Failed to draw separator");
+            self.context.stroke().unwrap();
         }
     }
 
-    /// Draw the password display (masked characters)
     fn draw_password_display(&self) {
-        if self.password_display.is_empty() {
-            return;
-        }
-
-        // Position: below the indicator ring (or centered if no indicator)
         let center_x = self.width as f64 / 2.0;
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
-        let thickness = self.config.indicator_thickness as f64;
-
-        // Place password text below the ring
-        let text_y = center_y + radius + thickness + 40.0; // 40px below ring
-
-        self.context.set_font_size(36.0);
+        self.context.new_path();
+        self.context.set_font_size(32.0);
         self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
-
-        // Center the text
-        let extents = self
-            .context
-            .text_extents(&self.password_display)
-            .expect("Failed to get password text extents");
-        let text_x = center_x - extents.width() / 2.0;
-
-        self.context.move_to(text_x, text_y);
+        let te = self.context.text_extents(&self.password_display).unwrap();
         self.context
-            .show_text(&self.password_display)
-            .expect("Failed to draw password");
+            .move_to(center_x - te.width() / 2.0, center_y + radius / 1.1);
+        self.context.show_text(&self.password_display).unwrap();
     }
 
-    /// Draw wrong password feedback (red flash)
+    fn draw_caps_lock_indicator(&self) {
+        let center_x = self.width as f64 / 2.0;
+        let center_y = self.height as f64 / 2.0;
+        let radius = self.config.indicator_radius as f64;
+        self.context.new_path();
+        self.context.set_font_size(12.0);
+        self.context.set_source_rgba(1.0, 0.5, 0.0, self.fade_alpha);
+        let text = "CAPS LOCK";
+        let te = self.context.text_extents(text).unwrap();
+        self.context
+            .move_to(center_x - te.width() / 2.0, center_y + radius / 1.1 + 20.0);
+        self.context.show_text(text).unwrap();
+    }
+
     fn draw_wrong_password_feedback(&self) {
         let center_x = self.width as f64 / 2.0;
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
-
-        // Calculate flash intensity based on time
+        let thickness = self.config.indicator_thickness as f64;
         let intensity = if let Some(start) = self.wrong_password_start {
             let elapsed = start.elapsed();
             let duration = std::time::Duration::from_millis(500);
@@ -320,26 +305,24 @@ impl Renderer {
         };
 
         if intensity > 0.0 {
+            self.context.new_path();
             self.context
                 .set_source_rgba(1.0, 0.0, 0.0, intensity * self.fade_alpha);
+            self.context.set_line_width(thickness + 2.0);
             self.context
                 .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
-            self.context
-                .fill()
-                .expect("Failed to draw wrong password feedback");
+            self.context.stroke().unwrap();
         }
     }
 
-    /// Draw key highlight feedback (green flash)
     fn draw_key_highlight_feedback(&self) {
         let center_x = self.width as f64 / 2.0;
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
-
-        // Calculate flash intensity based on time
+        let thickness = self.config.indicator_thickness as f64;
         let intensity = if let Some(start) = self.key_highlight_start {
             let elapsed = start.elapsed();
-            let duration = std::time::Duration::from_millis(200);
+            let duration = std::time::Duration::from_millis(300);
             if elapsed < duration {
                 1.0 - (elapsed.as_secs_f64() / duration.as_secs_f64())
             } else {
@@ -350,34 +333,36 @@ impl Renderer {
         };
 
         if intensity > 0.0 {
-            let key_hl_color = self.tuple_to_color(self.config.key_hl_color);
-            self.context.set_source_rgba(
-                key_hl_color.r as f64 / 255.0,
-                key_hl_color.g as f64 / 255.0,
-                key_hl_color.b as f64 / 255.0,
-                key_hl_color.a as f64 / 255.0 * intensity * self.fade_alpha,
+            let (r, g, b, a) = self.config.key_hl_color;
+            self.context
+                .set_source_rgba(r, g, b, a * intensity * self.fade_alpha);
+            self.context.set_line_width(thickness + 1.5);
+
+            // Draw ONLY ONE segment that rotates based on password length
+            let global_offset = (self.password_display.len() as f64 * 45.0).to_radians();
+            self.context.new_path();
+            let actual_start = global_offset + self.key_highlight_angle;
+            self.context.arc(
+                center_x,
+                center_y,
+                radius,
+                actual_start,
+                actual_start + (40.0_f64).to_radians(),
             );
-            self.context
-                .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
-            self.context
-                .fill()
-                .expect("Failed to draw key highlight feedback");
+            self.context.stroke().unwrap();
         }
     }
 
-    /// Update feedback timers and reset expired feedback
     fn update_feedback_timers(&mut self) {
-        // Check wrong password feedback timeout
+        self.update_uptime();
         if let Some(start) = self.wrong_password_start {
             if start.elapsed() > std::time::Duration::from_millis(500) {
                 self.wrong_password_shown = false;
                 self.wrong_password_start = None;
             }
         }
-
-        // Check key highlight feedback timeout
         if let Some(start) = self.key_highlight_start {
-            if start.elapsed() > std::time::Duration::from_millis(200) {
+            if start.elapsed() > std::time::Duration::from_millis(300) {
                 self.key_highlight_shown = false;
                 self.key_highlight_start = None;
             }

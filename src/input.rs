@@ -9,6 +9,7 @@ pub struct InputHandler {
     key_highlight_timer: Option<std::time::Instant>,
     temp_screenshot_timer: Option<std::time::Instant>,
     temp_screenshot_active: bool,
+    caps_lock: bool,
 }
 
 impl InputHandler {
@@ -21,6 +22,7 @@ impl InputHandler {
             key_highlight_timer: None,
             temp_screenshot_timer: None,
             temp_screenshot_active: false,
+            caps_lock: false,
         }
     }
 
@@ -31,6 +33,9 @@ impl InputHandler {
         state: wayland_client::protocol::wl_keyboard::KeyState,
         modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
     ) -> InputAction {
+        // Update Caps Lock state
+        self.caps_lock = modifiers.caps_lock;
+
         // Only process key press events
         if state != wayland_client::protocol::wl_keyboard::KeyState::Pressed {
             return InputAction::None;
@@ -143,17 +148,6 @@ impl InputHandler {
         self.password_buffer.chars().map(|_| '•').collect()
     }
 
-    /// Get the actual password (for authentication)
-    pub fn get_password(&self) -> Zeroizing<String> {
-        self.password_buffer.clone()
-    }
-
-    /// Clear the password buffer (e.g., after wrong password)
-    pub fn clear_password(&mut self) {
-        self.password_buffer.clear();
-        self.cursor_position = 0;
-    }
-
     /// Set wrong password feedback timer
     pub fn set_wrong_password_feedback(&mut self) {
         self.wrong_password_timer = Some(std::time::Instant::now());
@@ -204,11 +198,6 @@ impl InputHandler {
             }
         }
         false
-    }
-
-    /// Check if temp screenshot is currently active
-    pub fn is_temp_screenshot_active(&self) -> bool {
-        self.temp_screenshot_active
     }
 
     /// Update temp screenshot state (call periodically)
