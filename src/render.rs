@@ -2,6 +2,7 @@ use cairo::{Context, Format, ImageSurface};
 use std::time::Instant;
 
 use crate::config::Config;
+use crate::system::SystemStatus;
 
 /// Cairo-based renderer for the lock screen
 pub struct Renderer {
@@ -21,6 +22,16 @@ pub struct Renderer {
     uptime_cache: String,
     last_uptime_update: Option<Instant>,
     caps_lock: bool,
+    pub system_status: SystemStatus,
+    media_art_surface: Option<ImageSurface>,
+    last_art_url: Option<String>,
+    wifi_icon_surface: Option<ImageSurface>,
+    bluetooth_icon_surface: Option<ImageSurface>,
+    battery_icon_surface: Option<ImageSurface>,
+    media_prev_icon_surface: Option<ImageSurface>,
+    media_stop_icon_surface: Option<ImageSurface>,
+    media_play_icon_surface: Option<ImageSurface>,
+    media_next_icon_surface: Option<ImageSurface>,
 }
 
 impl Renderer {
@@ -31,10 +42,10 @@ impl Renderer {
             .expect("Failed to create Cairo surface");
         let context = Context::new(&surface).expect("Failed to create Cairo context");
 
-        Self {
+        let mut renderer = Self {
             width,
             height,
-            config,
+            config: config.clone(),
             surface,
             context,
             fade_alpha: 0.0,
@@ -48,6 +59,85 @@ impl Renderer {
             uptime_cache: String::new(),
             last_uptime_update: None,
             caps_lock: false,
+            system_status: SystemStatus::default(),
+            media_art_surface: None,
+            last_art_url: None,
+            wifi_icon_surface: None,
+            bluetooth_icon_surface: None,
+            battery_icon_surface: None,
+            media_prev_icon_surface: None,
+            media_stop_icon_surface: None,
+            media_play_icon_surface: None,
+            media_next_icon_surface: None,
+        };
+
+        renderer.load_icons();
+        renderer
+    }
+
+    fn load_icons(&mut self) {
+        if let Some(ref path) = self.config.wifi_icon {
+            self.wifi_icon_surface = self.load_icon(path);
+        }
+        if let Some(ref path) = self.config.bluetooth_icon {
+            self.bluetooth_icon_surface = self.load_icon(path);
+        }
+        if let Some(ref path) = self.config.battery_icon {
+            self.battery_icon_surface = self.load_icon(path);
+        }
+        if let Some(ref path) = self.config.media_prev_icon {
+            self.media_prev_icon_surface = self.load_icon(path);
+        }
+        if let Some(ref path) = self.config.media_stop_icon {
+            self.media_stop_icon_surface = self.load_icon(path);
+        }
+        if let Some(ref path) = self.config.media_play_icon {
+            self.media_play_icon_surface = self.load_icon(path);
+        }
+        if let Some(ref path) = self.config.media_next_icon {
+            self.media_next_icon_surface = self.load_icon(path);
+        }
+    }
+
+    fn load_icon(&self, identifier: &str) -> Option<ImageSurface> {
+        let path = if identifier.starts_with('/') {
+            std::path::PathBuf::from(identifier)
+        } else {
+            return None;
+        };
+
+        if let Ok(pixbuf) = gdk_pixbuf::Pixbuf::from_file(&path) {
+            let w = pixbuf.width();
+            let h = pixbuf.height();
+            let mut surface = ImageSurface::create(Format::ARgb32, w, h).ok()?;
+            {
+                let mut surface_data = surface.data().ok()?;
+                let pix_data = unsafe { pixbuf.pixels() };
+                let n_channels = pixbuf.n_channels();
+                let rowstride = pixbuf.rowstride() as usize;
+
+                for y in 0..h as usize {
+                    for x in 0..w as usize {
+                        let pix_idx = y * rowstride + x * n_channels as usize;
+                        let surf_idx = (y * w as usize + x) * 4;
+
+                        if n_channels == 4 {
+                            surface_data[surf_idx] = pix_data[pix_idx + 2];
+                            surface_data[surf_idx + 1] = pix_data[pix_idx + 1];
+                            surface_data[surf_idx + 2] = pix_data[pix_idx];
+                            surface_data[surf_idx + 3] = pix_data[pix_idx + 3];
+                        } else if n_channels == 3 {
+                            surface_data[surf_idx] = pix_data[pix_idx + 2];
+                            surface_data[surf_idx + 1] = pix_data[pix_idx + 1];
+                            surface_data[surf_idx + 2] = pix_data[pix_idx];
+                            surface_data[surf_idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+            Some(surface)
+        } else {
+            None
         }
     }
 
@@ -122,6 +212,22 @@ impl Renderer {
 
         if self.config.clock {
             self.draw_clock();
+        }
+
+        if self.config.show_media {
+            self.draw_media();
+        }
+
+        if self.config.show_network {
+            self.draw_network();
+        }
+
+        if self.config.show_battery {
+            self.draw_status();
+        }
+
+        if self.config.show_bluetooth {
+            self.draw_bluetooth();
         }
 
         if !self.password_display.is_empty() {
@@ -366,6 +472,282 @@ impl Renderer {
                 self.key_highlight_shown = false;
                 self.key_highlight_start = None;
             }
+        }
+    }
+
+    fn draw_media(&mut self) {
+        if let Some(ref title) = self.system_status.media_title {
+            let center_x = self.width as f64 / 2.0;
+            let start_y = self.height as f64 - 120.0;
+            let art_size = 56.0;
+            let spacing = 80.0;
+
+            if self.config.show_album_art {
+                if self.system_status.media_art_url != self.last_art_url {
+                    self.last_art_url = self.system_status.media_art_url.clone();
+                    self.media_art_surface = None;
+                    if let Some(ref data) = self.system_status.media_art_data {
+                        if let Ok(img) = image::load_from_memory(data) {
+                            let img = img.to_rgba8();
+                            let (w, h) = img.dimensions();
+                            let mut surface = ImageSurface::create(Format::ARgb32, w as i32, h as i32).unwrap();
+                            {
+                                let mut surface_data = surface.data().unwrap();
+                                for y in 0..h {
+                                    for x in 0..w {
+                                        let pixel = img.get_pixel(x, y);
+                                        let idx = ((y * w + x) * 4) as usize;
+                                        surface_data[idx] = pixel[2];
+                                        surface_data[idx + 1] = pixel[1];
+                                        surface_data[idx + 2] = pixel[0];
+                                        surface_data[idx + 3] = pixel[3];
+                                    }
+                                }
+                            }
+                            self.media_art_surface = Some(surface);
+                        }
+                    }
+                }
+            }
+
+            let has_art = self.config.show_album_art && self.media_art_surface.is_some();
+            let text_x = if has_art { center_x - spacing / 2.0 } else { center_x };
+            let art_x = center_x - spacing - art_size / 2.0;
+
+            if has_art {
+                if let Some(ref art) = self.media_art_surface {
+                    self.context.save().unwrap();
+                    let scale = art_size / art.width() as f64;
+                    self.context.translate(art_x, start_y);
+                    self.context.scale(scale, scale);
+                    self.context.set_source_surface(art, 0.0, 0.0).unwrap();
+                    self.context.paint_with_alpha(self.fade_alpha).unwrap();
+                    self.context.restore().unwrap();
+                }
+            }
+
+            self.context.new_path();
+            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.9);
+            self.context.set_font_size(16.0);
+
+            let display_text = if let Some(ref artist) = self.system_status.media_artist {
+                format!("{} - {}", artist, title)
+            } else {
+                title.clone()
+            };
+
+            let te = self.context.text_extents(&display_text).unwrap();
+            self.context.move_to(text_x - te.width() / 2.0, start_y + 20.0);
+            self.context.show_text(&display_text).unwrap();
+
+            let status_text = if self.system_status.media_playing { 
+                if let Some(ref icon) = self.media_play_icon_surface {
+                    // Draw play icon instead of text
+                    let play_y = start_y + 40.0;
+                    self.draw_icon_at(center_x - icon.width() as f64 / 2.0, play_y - icon.height() as f64 / 2.0, icon);
+                    ""
+                } else {
+                    "▶ Playing"
+                }
+            } else {
+                "⏸ Paused"
+            };
+            
+            if !status_text.is_empty() {
+                self.context.set_font_size(12.0);
+                let se = self.context.text_extents(status_text).unwrap();
+                self.context.move_to(text_x - se.width() / 2.0, start_y + 40.0);
+                self.context.show_text(status_text).unwrap();
+            }
+
+            let controls_y = start_y + 65.0;
+            
+            // Draw media control icons
+            let icon_size = 20.0;
+            let icon_spacing = 40.0;
+            let controls_center_x = center_x;
+            
+            // Previous icon
+            if let Some(ref icon) = self.media_prev_icon_surface {
+                let ix = controls_center_x - icon_spacing;
+                self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
+            } else {
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
+                self.context.set_font_size(16.0);
+                self.context.move_to(controls_center_x - icon_spacing - 8.0, controls_y);
+                self.context.show_text("⏮").unwrap();
+            }
+            
+            // Stop icon
+            if let Some(ref icon) = self.media_stop_icon_surface {
+                let ix = controls_center_x;
+                self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
+            } else {
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
+                self.context.set_font_size(16.0);
+                self.context.move_to(controls_center_x - 8.0, controls_y);
+                self.context.show_text("⏹").unwrap();
+            }
+            
+            // Next icon
+            if let Some(ref icon) = self.media_next_icon_surface {
+                let ix = controls_center_x + icon_spacing;
+                self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
+            } else {
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
+                self.context.set_font_size(16.0);
+                self.context.move_to(controls_center_x + icon_spacing - 8.0, controls_y);
+                self.context.show_text("⏭").unwrap();
+            }
+        }
+    }
+
+    fn draw_network(&self) {
+        if !self.config.show_network {
+            return;
+        }
+        let margin = 20.0;
+        let x = margin;
+        let y = margin + 20.0;
+
+        if let Some(ref ssid) = self.system_status.wifi_ssid {
+            if let Some(ref icon) = self.wifi_icon_surface {
+                self.draw_icon_at(x, y - 15.0, icon);
+                let text_x = x + icon.width() as f64 + 10.0;
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(16.0);
+                self.context.move_to(text_x, y);
+                self.context.show_text(ssid).unwrap();
+            } else {
+                let strength = self.system_status.wifi_strength.unwrap_or(0);
+                let icon = if strength > 75 { "📶" } else if strength > 50 { "📶" } else if strength > 25 { "📶" } else { "📶" };
+                let text = format!("{} {}", icon, ssid);
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(16.0);
+                self.context.move_to(x, y);
+                self.context.show_text(&text).unwrap();
+            }
+        } else {
+            let text = "📵 No WiFi";
+            self.context.new_path();
+            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
+            self.context.set_font_size(16.0);
+            self.context.move_to(x, y);
+            self.context.show_text(text).unwrap();
+        }
+    }
+
+    fn draw_status(&self) {
+        if let Some(percent) = self.system_status.battery_percent {
+            let margin = 20.0;
+            let icon_width = 30.0;
+            let x = self.width as f64 - margin - icon_width - 50.0;
+            let y = margin + 20.0;
+
+            if let Some(ref icon) = self.battery_icon_surface {
+                self.draw_icon_at(x, y - 15.0, icon);
+                let text_x = x + icon.width() as f64 + 10.0;
+                let battery_text = format!("{:.0}%", percent);
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(16.0);
+                self.context.move_to(text_x, y);
+                self.context.show_text(&battery_text).unwrap();
+            } else {
+                self.draw_battery_icon_at(x, y - 12.0, icon_width, 15.0, percent, self.system_status.is_charging);
+                let battery_text = format!("{:.0}%", percent);
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(16.0);
+                self.context.move_to(x + icon_width + 10.0, y);
+                self.context.show_text(&battery_text).unwrap();
+            }
+        }
+    }
+
+    fn draw_bluetooth(&self) {
+        if !self.config.show_bluetooth {
+            return;
+        }
+        let margin = 20.0;
+        let x = margin;
+        let y = margin + 50.0;
+
+        if self.system_status.bluetooth_connected {
+            if let Some(ref icon) = self.bluetooth_icon_surface {
+                self.draw_icon_at(x, y - 12.0, icon);
+                let text_x = x + icon.width() as f64 + 10.0;
+                let devices = self.system_status.bluetooth_devices.join(", ");
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(14.0);
+                self.context.move_to(text_x, y);
+                self.context.show_text(&devices).unwrap();
+            } else {
+                let text = format!("🔵 {} device(s)", self.system_status.bluetooth_devices.len());
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(14.0);
+                self.context.move_to(x, y);
+                self.context.show_text(&text).unwrap();
+            }
+        } else {
+            let text = "🔴 Bluetooth off";
+            self.context.new_path();
+            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
+            self.context.set_font_size(14.0);
+            self.context.move_to(x, y);
+            self.context.show_text(text).unwrap();
+        }
+    }
+
+    fn draw_icon_at(&self, x: f64, y: f64, surface: &ImageSurface) {
+        self.context.save().unwrap();
+        let target_size = 24.0;
+        let scale_x = target_size / surface.width() as f64;
+        let scale_y = target_size / surface.height() as f64;
+        let scale = scale_x.min(scale_y);
+        self.context.translate(x, y);
+        self.context.scale(scale, scale);
+        self.context.set_source_surface(surface, 0.0, 0.0).unwrap();
+        self.context.paint_with_alpha(self.fade_alpha).unwrap();
+        self.context.restore().unwrap();
+    }
+
+    fn draw_battery_icon_at(&self, x: f64, y: f64, width: f64, height: f64, percent: f64, charging: bool) {
+        let alpha = self.fade_alpha;
+        self.context.new_path();
+        self.context.set_source_rgba(1.0, 1.0, 1.0, alpha * 0.5);
+        self.context.set_line_width(2.0);
+        self.context.rectangle(x, y, width, height);
+        self.context.stroke().unwrap();
+        self.context.new_path();
+        self.context.rectangle(x + width, y + height / 4.0, 3.0, height / 2.0);
+        self.context.fill().unwrap();
+        let fill_width = (width - 4.0) * (percent / 100.0);
+        self.context.new_path();
+        if percent < 20.0 {
+            self.context.set_source_rgba(1.0, 0.2, 0.2, alpha);
+        } else {
+            self.context.set_source_rgba(0.2, 1.0, 0.2, alpha * 0.8);
+        }
+        self.context.rectangle(x + 2.0, y + 2.0, fill_width, height - 4.0);
+        self.context.fill().unwrap();
+        if charging {
+            self.context.new_path();
+            self.context.set_source_rgba(1.0, 1.0, 0.0, alpha);
+            let bx = x + width / 2.0;
+            let by = y + height / 2.0;
+            self.context.move_to(bx - 3.0, by + 2.0);
+            self.context.line_to(bx + 1.0, by - 1.0);
+            self.context.line_to(bx - 1.0, by - 1.0);
+            self.context.line_to(bx + 3.0, by - 6.0);
+            self.context.line_to(bx - 1.0, by - 3.0);
+            self.context.line_to(bx + 1.0, by - 3.0);
+            self.context.close_path();
+            self.context.fill().unwrap();
         }
     }
 }

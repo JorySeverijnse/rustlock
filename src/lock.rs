@@ -6,6 +6,7 @@ use wayland_client::protocol::{wl_output, wl_shm, wl_surface};
 use crate::config::Config;
 use crate::input::{InputAction, InputHandler};
 use crate::render::Renderer;
+use crate::system::SystemStatus;
 use smithay_client_toolkit::seat::keyboard::KeyEvent;
 use smithay_client_toolkit::shm::slot::SlotPool;
 
@@ -19,7 +20,6 @@ pub struct LockedSurface {
     fade_alpha: f64,
     wrong_password_shown: bool,
     key_highlight_shown: bool,
-    temp_screenshot_shown: bool,
     start_time: Instant,
     wayland_surface: Option<wl_surface::WlSurface>,
     output: wl_output::WlOutput,
@@ -50,7 +50,6 @@ impl LockedSurface {
             fade_alpha: 0.0,
             wrong_password_shown: false,
             key_highlight_shown: false,
-            temp_screenshot_shown: false,
             start_time: Instant::now(),
             wayland_surface: None,
             output,
@@ -108,15 +107,6 @@ impl LockedSurface {
             self.key_highlight_shown = false;
         }
 
-        // Check if we should show/hide temp screenshot
-        if self.input_handler.should_show_temp_screenshot() && !self.temp_screenshot_shown {
-            self.renderer.set_fade_alpha(0.3);
-            self.temp_screenshot_shown = true;
-        } else if !self.input_handler.should_show_temp_screenshot() && self.temp_screenshot_shown {
-            self.renderer.set_fade_alpha(self.fade_alpha);
-            self.temp_screenshot_shown = false;
-        }
-
         // Set background if available and not already applied
         if !self.background_applied {
             if let Some(ref background) = self.background {
@@ -170,11 +160,12 @@ impl LockedSurface {
     pub fn handle_key_event(
         &mut self,
         event: smithay_client_toolkit::seat::keyboard::KeyEvent,
+        modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
     ) -> Option<InputAction> {
         let action = self.input_handler.handle_key_event(
             event.keysym,
-            wayland_client::protocol::wl_keyboard::KeyState::Pressed,
-            smithay_client_toolkit::seat::keyboard::Modifiers::default(),
+            event.utf8,
+            modifiers,
         );
 
         match action {
@@ -203,6 +194,10 @@ impl LockedSurface {
     pub fn set_background(&mut self, surface: ImageSurface) {
         self.background = Some(surface);
         self.background_applied = false;
+    }
+
+    pub fn set_system_status(&mut self, status: SystemStatus) {
+        self.renderer.system_status = status;
     }
 }
 
@@ -252,19 +247,23 @@ impl LockManager {
             .find(|surface| surface.matches_surface(wayland_surface))
     }
 
-    pub fn handle_key_event(&mut self, event: KeyEvent) -> Option<InputAction> {
+    pub fn handle_key_event(
+        &mut self,
+        event: KeyEvent,
+        modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
+    ) -> Option<InputAction> {
         let mut action = None;
         for surface in &mut self.surfaces {
-            if let Some(a) = surface.handle_key_event(event.clone()) {
+            if let Some(a) = surface.handle_key_event(event.clone(), modifiers) {
                 action = Some(a);
             }
         }
         action
     }
 
-    pub fn toggle_peek(&mut self) {
+    pub fn set_system_status(&mut self, status: SystemStatus) {
         for surface in &mut self.surfaces {
-            surface.input_handler.update_temp_screenshot();
+            surface.set_system_status(status.clone());
         }
     }
 }

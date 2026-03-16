@@ -41,7 +41,159 @@ impl Screenshot {
         if let Some((base, factor)) = config.effect_vignette {
             self.apply_vignette(base, factor);
         }
+        if let Some(pixel_size) = config.effect_pixelate {
+            self.apply_pixelate(pixel_size);
+        }
+        if let Some(angle) = config.effect_swirl {
+            self.apply_swirl(angle);
+        }
+        if let Some(factor) = config.effect_melting {
+            self.apply_melting(factor);
+        }
         Ok(())
+    }
+
+    /// Apply a swirl effect.
+    pub fn apply_swirl(&mut self, angle: f32) {
+        let width = self.surface.width();
+        let height = self.surface.height();
+        let center_x = width as f32 / 2.0;
+        let center_y = height as f32 / 2.0;
+        let radius = center_x.min(center_y);
+
+        let stride = self.surface.stride() as usize;
+        let mut data = vec![0u8; stride * height as usize];
+        self.surface
+            .with_data(|src| data.copy_from_slice(src))
+            .unwrap();
+        let original = data.clone();
+
+        for y in 0..height {
+            for x in 0..width {
+                let dx = x as f32 - center_x;
+                let dy = y as f32 - center_y;
+                let d = (dx * dx + dy * dy).sqrt();
+
+                if d < radius {
+                    let percent = (radius - d) / radius;
+                    let theta = percent * percent * angle;
+                    let s = theta.sin();
+                    let c = theta.cos();
+
+                    let nx = (c * dx - s * dy + center_x) as i32;
+                    let ny = (s * dx + c * dy + center_y) as i32;
+
+                    if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                        let src_idx = (ny as usize * stride) + (nx as usize * 4);
+                        let dst_idx = (y as usize * stride) + (x as usize * 4);
+                        data[dst_idx..dst_idx + 4].copy_from_slice(&original[src_idx..src_idx + 4]);
+                    }
+                }
+            }
+        }
+
+        let mut surface_data = self.surface.data().unwrap();
+        surface_data.copy_from_slice(&data);
+    }
+
+    /// Apply a melting effect (vertical smear).
+    pub fn apply_melting(&mut self, factor: f32) {
+        let width = self.surface.width();
+        let height = self.surface.height();
+
+        let stride = self.surface.stride() as usize;
+        let mut data = vec![0u8; stride * height as usize];
+        self.surface
+            .with_data(|src| data.copy_from_slice(src))
+            .unwrap();
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        for x in 0..width {
+            let mut melt_amount = 0.0;
+            for y in 0..height {
+                melt_amount += rng.gen_range(0.0..factor);
+                let src_y = (y as f32 - melt_amount).max(0.0) as i32;
+                
+                let src_idx = (src_y as usize * stride) + (x as usize * 4);
+                let dst_idx = (y as usize * stride) + (x as usize * 4);
+                
+                // Copy the pixel from above to create a smear
+                let pixel = [
+                    data[src_idx],
+                    data[src_idx + 1],
+                    data[src_idx + 2],
+                    data[src_idx + 3],
+                ];
+                data[dst_idx..dst_idx + 4].copy_from_slice(&pixel);
+            }
+        }
+
+        let mut surface_data = self.surface.data().unwrap();
+        surface_data.copy_from_slice(&data);
+    }
+
+    /// Pixelate the surface.
+    pub fn apply_pixelate(&mut self, pixel_size: u32) {
+        if pixel_size <= 1 {
+            return;
+        }
+
+        let width = self.surface.width();
+        let height = self.surface.height();
+        let stride = self.surface.stride() as usize;
+        let mut data = vec![0u8; stride * height as usize];
+        self.surface
+            .with_data(|src| data.copy_from_slice(src))
+            .unwrap();
+
+        for y in (0..height).step_by(pixel_size as usize) {
+            for x in (0..width).step_by(pixel_size as usize) {
+                let mut r = 0u32;
+                let mut g = 0u32;
+                let mut b = 0u32;
+                let mut count = 0u32;
+
+                // Average pixels in the block
+                for py in 0..pixel_size {
+                    for px in 0..pixel_size {
+                        let cur_x = x + px as i32;
+                        let cur_y = y + py as i32;
+                        if cur_x < width && cur_y < height {
+                            let index = (cur_y as usize * stride) + (cur_x as usize * 4);
+                            r += data[index] as u32;
+                            g += data[index + 1] as u32;
+                            b += data[index + 2] as u32;
+                            count += 1;
+                        }
+                    }
+                }
+
+                if count > 0 {
+                    let r = (r / count) as u8;
+                    let g = (g / count) as u8;
+                    let b = (b / count) as u8;
+
+                    // Fill the block
+                    for py in 0..pixel_size {
+                        for px in 0..pixel_size {
+                            let cur_x = x + px as i32;
+                            let cur_y = y + py as i32;
+                            if cur_x < width && cur_y < height {
+                                let index = (cur_y as usize * stride) + (cur_x as usize * 4);
+                                data[index] = r;
+                                data[index + 1] = g;
+                                data[index + 2] = b;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut surface_data = self.surface.data().unwrap();
+        surface_data.copy_from_slice(&data);
     }
 
     /// Apply a Gaussian blur effect.
@@ -304,6 +456,7 @@ pub struct CaptureData {
     pub info: Mutex<Option<BufferInfo>>,
     pub flags: Mutex<Option<Flags>>,
     pub buffer: Mutex<Option<Buffer>>,
+    pub pool: Mutex<Option<SlotPool>>,
 }
 
 impl CaptureData {
@@ -314,6 +467,7 @@ impl CaptureData {
             info: Mutex::new(None),
             flags: Mutex::new(None),
             buffer: Mutex::new(None),
+            pool: Mutex::new(None),
         }
     }
 }

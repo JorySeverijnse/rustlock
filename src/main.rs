@@ -4,12 +4,14 @@ mod input;
 mod lock;
 mod render;
 mod screenshot;
+mod system;
 mod timer;
 mod util;
 
 use config::Config;
 use lock::LockManager;
 use screenshot::{CaptureData, Screenshot, ScreenshotManager};
+use system::SystemManager;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -125,6 +127,9 @@ struct WaylandLock {
     unlocking: bool,
     screenshot_manager: Option<ScreenshotManager>,
     grace_until: Option<Instant>,
+    system_manager: Arc<SystemManager>,
+    modifiers: Modifiers,
+    current_layout: u32,
 }
 
 impl WaylandLock {
@@ -163,6 +168,41 @@ impl WaylandLock {
     }
 
     fn handle_key_event(&mut self, event: KeyEvent) {
+        use crate::input::InputAction;
+        use smithay_client_toolkit::seat::keyboard::Keysym;
+
+        // Media and Session keys (Always handle these first and don't trigger grace unlock)
+        match event.keysym {
+            Keysym::XF86_AudioPlay | Keysym::XF86_AudioPause => {
+                self.system_manager.media_play_pause();
+                return;
+            }
+            Keysym::XF86_AudioNext => {
+                self.system_manager.media_next();
+                return;
+            }
+            Keysym::XF86_AudioPrev => {
+                self.system_manager.media_prev();
+                return;
+            }
+            Keysym::F1 => {
+                self.system_manager
+                    .send_command(system::SystemCommand::Suspend);
+                return;
+            }
+            Keysym::F2 => {
+                self.system_manager
+                    .send_command(system::SystemCommand::Reboot);
+                return;
+            }
+            Keysym::F3 => {
+                self.system_manager
+                    .send_command(system::SystemCommand::PowerOff);
+                return;
+            }
+            _ => {}
+        }
+
         // Check if we're in the grace period (any key unlocks without password)
         if let Some(grace_until) = self.grace_until {
             if Instant::now() < grace_until {
@@ -173,16 +213,14 @@ impl WaylandLock {
             }
         }
 
-        use crate::input::InputAction;
-        use smithay_client_toolkit::seat::keyboard::Keysym;
-
         if event.keysym == Keysym::Return {
             log::info!("Enter pressed - submitting password");
             if let Ok(mut lock_manager) = self.lock_manager.lock() {
                 let mut password = Zeroizing::new(String::new());
+                let modifiers = self.modifiers;
                 for surface in &mut lock_manager.surfaces {
                     if let Some(InputAction::SubmitPassword(p)) =
-                        surface.handle_key_event(event.clone())
+                        surface.handle_key_event(event.clone(), modifiers)
                     {
                         password = p;
                     }
@@ -194,17 +232,12 @@ impl WaylandLock {
                 }
             }
         } else {
-            let action = self
+            let modifiers = self.modifiers;
+            let _action = self
                 .lock_manager
                 .lock()
-                .map(|mut lm| lm.handle_key_event(event))
+                .map(|mut lm| lm.handle_key_event(event, modifiers))
                 .unwrap_or(None);
-
-            if let Some(InputAction::TempScreenshot) = action {
-                if let Ok(mut lm) = self.lock_manager.lock() {
-                    lm.toggle_peek();
-                }
-            }
         }
     }
 }
@@ -372,9 +405,11 @@ impl KeyboardHandler for WaylandLock {
         _qh: &QueueHandle<Self>,
         _keyboard: &wayland_client::protocol::wl_keyboard::WlKeyboard,
         _serial: u32,
-        _modifiers: Modifiers,
-        _layout: u32,
+        modifiers: Modifiers,
+        layout: u32,
     ) {
+        self.modifiers = modifiers;
+        self.current_layout = layout;
     }
 }
 
@@ -402,7 +437,9 @@ impl SeatHandler for WaylandLock {
                 &seat,
                 None,
                 self.loop_handle.clone(),
-                Box::new(|_state, _kbd, _event| {}),
+                Box::new(|state, _kbd, event| {
+                    state.handle_key_event(event);
+                }),
             );
         }
     }
@@ -453,6 +490,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
                 stride,
             } => {
                 let format = format.into_result().unwrap();
+                
                 let mut info = data.info.lock().unwrap();
                 *info = Some(screenshot::BufferInfo {
                     width,
@@ -460,15 +498,22 @@ impl Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
                     stride,
                     format,
                 });
-                match state
-                    .pool
-                    .create_buffer(width as i32, height as i32, stride as i32, format)
-                {
-                    Ok((buffer, _canvas)) => {
-                        frame.copy(buffer.wl_buffer());
-                        *data.buffer.lock().unwrap() = Some(buffer);
+
+                // Create a dedicated pool for this screenshot to ensure offset 0
+                // This matches swaylock-effects and fixes "invalid buffer" on some compositors
+                let size = (stride as usize) * (height as usize);
+                match SlotPool::new(size, &state.shm_state) {
+                    Ok(mut pool) => {
+                        match pool.create_buffer(width as i32, height as i32, stride as i32, format) {
+                            Ok((buffer, _canvas)) => {
+                                frame.copy(buffer.wl_buffer());
+                                *data.buffer.lock().unwrap() = Some(buffer);
+                                *data.pool.lock().unwrap() = Some(pool);
+                            }
+                            Err(e) => log::error!("Screencopy: Buffer creation failed: {:?}", e),
+                        }
                     }
-                    Err(e) => log::error!("Screencopy: Buffer creation failed: {:?}", e),
+                    Err(e) => log::error!("Screencopy: Pool creation failed: {:?}", e),
                 }
             }
             Event::Flags { flags } => {
@@ -480,13 +525,15 @@ impl Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
                     let buffer = data.buffer.lock().unwrap().take();
                     let info = data.info.lock().unwrap().take();
                     let flags = data.flags.lock().unwrap().take();
-                    if let (Some(buffer), Some(info), Some(flags)) = (buffer, info, flags) {
+                    let pool = data.pool.lock().unwrap().take();
+                    
+                    if let (Some(buffer), Some(info), Some(flags), Some(mut pool)) = (buffer, info, flags, pool) {
                         let handle = screenshot::ScreencopyBufferHandle {
                             buffer,
                             info,
                             y_invert: flags.contains(Flags::YInvert),
                         };
-                        if let Ok(surface) = mgr.buffer_to_surface(handle, &mut state.pool) {
+                        if let Ok(surface) = mgr.buffer_to_surface(handle, &mut pool) {
                             let mut ss = Screenshot::new(surface);
                             let _ = ss.apply_effects(&state.config);
                             if data.output_idx < state.captured_backgrounds.len() {
@@ -547,10 +594,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     let qh: QueueHandle<WaylandLock> = event_queue.handle();
 
     let shm_state = Shm::bind(&globals, &qh).map_err(|_| "wl_shm not supported")?;
-    let pool = SlotPool::new(1920 * 1080 * 4, &shm_state)?;
 
-    let (auth_tx_actual, auth_feedback_rx_actual) = auth::create_and_run_auth_loop();
+    let system_manager = Arc::new(SystemManager::new());
+
+    let (auth_tx_actual, auth_feedback_rx_actual) = match auth::create_and_run_auth_loop() {
+        Some(channels) => channels,
+        None => {
+            log::error!("Failed to initialize authentication. This usually means PAM is not configured correctly.");
+            log::error!("Please ensure you have a PAM service file at /etc/pam.d/rustlock");
+            std::process::exit(1);
+        }
+    };
     let mut event_loop: EventLoop<WaylandLock> = EventLoop::try_new()?;
+
+    // Initialize state without pool first
+    // We'll create the pool after we know the output dimensions
+    
+    // Initialize pool with a minimal size, it will be resized once outputs are detected
+    let pool = SlotPool::new(1, &shm_state)?;
 
     let mut state = WaylandLock {
         loop_handle: event_loop.handle(),
@@ -563,7 +624,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         registry_state: RegistryState::new(&globals),
         session_lock_state: SessionLockState::new(&globals, &qh),
         seat_state: SeatState::new(&globals, &qh),
-        shm_state,
+        shm_state: shm_state,
         pool,
         session_lock: None,
         lock_surfaces: Vec::new(),
@@ -575,9 +636,66 @@ fn main() -> Result<(), Box<dyn Error>> {
         unlocking: false,
         screenshot_manager: ScreenshotManager::new(&globals, &qh).ok(),
         grace_until: None,
+        system_manager: system_manager.clone(),
+        modifiers: Modifiers::default(),
+        current_layout: 0,
     };
 
     event_queue.blocking_dispatch(&mut state)?;
+
+    // Handle custom background image if provided (prioritize over screenshots)
+    if let Some(ref image_path) = state.config.image {
+        log::info!("Loading custom background image from {:?}", image_path);
+        if let Ok(img) = image::open(image_path) {
+            let img = img.to_rgba8();
+            let (w, h) = img.dimensions();
+            let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, w as i32, h as i32).unwrap();
+            {
+                let mut surface_data = surface.data().unwrap();
+                for y in 0..h {
+                    for x in 0..w {
+                        let pixel = img.get_pixel(x, y);
+                        let idx = ((y * w + x) * 4) as usize;
+                        surface_data[idx] = pixel[2]; // B
+                        surface_data[idx + 1] = pixel[1]; // G
+                        surface_data[idx + 2] = pixel[0]; // R
+                        surface_data[idx + 3] = pixel[3]; // A
+                    }
+                }
+            }
+            
+            let mut ss = Screenshot::new(surface);
+            let _ = ss.apply_effects(&state.config);
+            let surface = ss.into_inner();
+            
+            let num_outputs = state.output_state.outputs().count();
+            state.captured_backgrounds = vec![Some(surface); num_outputs];
+            
+            // Disable screenshots if image was successfully loaded
+            state.config.screenshots = false;
+        } else {
+            log::error!("Failed to load custom background image from {:?}", image_path);
+        }
+    }
+
+    // Now that we have output info, we can resize the pool if needed
+    let mut total_size = 0;
+    for output in state.output_state.outputs() {
+        if let Some(info) = state.output_state.info(&output) {
+            if let Some(mode) = info.modes.first() {
+                let (w, h) = mode.dimensions;
+                total_size += (w as usize) * (h as usize) * 4;
+            }
+        }
+    }
+    if total_size > 0 {
+        // Resize pool to fit all outputs
+        // SlotPool doesn't have a direct resize, but we can just create a new one if needed,
+        // or rely on its internal growing if we use it that way.
+        // Actually SCTK SlotPool handles resizing when creating buffers if needed,
+        // but it's better to have a large enough base.
+        state.pool = SlotPool::new(total_size, &state.shm_state)?;
+    }
 
     let _wayland_source =
         WaylandSource::new(conn.clone(), event_queue).insert(event_loop.handle())?;
@@ -606,7 +724,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             return calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(100));
         }
 
+        let mut status = state.system_manager.get_status();
+        status.keyboard_layout = Some(state.current_layout);
+
         if let Ok(mut lm) = state.lock_manager.lock() {
+            lm.set_system_status(status);
             lm.update();
             for surface in &mut lm.surfaces {
                 let _ = surface.commit(&mut state.pool);
@@ -618,6 +740,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(16))
         }
     })?;
+
+    // Dispatch to ensure outputs are ready before capture
+    if state.config.screenshots {
+        event_loop.dispatch(Duration::from_millis(50), &mut state)?;
+    }
 
     if state.config.screenshots {
         state.outputs = state.output_state.outputs().collect();

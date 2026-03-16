@@ -4,23 +4,47 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-smithay-client-toolkit = { version = "0.19", features = ["calloop"] }
-wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+smithay-client-toolkit = { version = "0.19", default-features = false, features = ["calloop", "xkbcommon"] }
+wayland-client = { version = "0.31" }
+wayland-protocols = { version = "0.32", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 anyhow = "1.0"
-futures = "0.3"
-cairo-rs = { version = "0.20", features = ["png"] }
-image = "0.25"
-fastblur = "0.1"
-xkbcommon = "0.7"
-pam-client = "0.5"
-secstr = "0.5"
-clap = { version = "4.5", features = ["derive"] }
-toml = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+futures = { version = "0.3", default-features = false, features = ["std"] }
+cairo-rs = { version = "0.20", default-features = false, features = ["png"] }
+gdk-pixbuf = { version = "0.20", default-features = false, features = ["v2_40"] }
+gio = { version = "0.20" }
+pangocairo = { version = "0.20" }
+clap = { version = "4.4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+toml = { version = "1.0", default-features = false, features = ["parse", "display", "serde"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 zeroize = "1.7"
 log = "0.4"
-env_logger = "0.11"
-chrono = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["color", "humantime"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 users = "0.11"
+zbus = { version = "3.15", default-features = false, features = ["tokio"] }
+mpris = "2.0"
+upower_dbus = "0.3"
+tokio = { version = "1.0", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
+num-traits = { version = "0.2" }
+rand = { version = "0.8" }
+reqwest = { version = "0.11", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+fastblur = "0.1"
+pam-client = "0.5"
+thiserror = "1.0"
+bytemuck = "1.14"
+calloop = "0.13"
+xkbcommon = "0.7"
+calloop-wayland-source = "0.3"
+
+[features]
+default = ["networking"]
+networking = ["dep:reqwest", "tokio/net"]
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce parallel code gen to allow better size optimization
+panic = "abort"     # Remove heavy stack unwinding code
+strip = true        # Automatically strip symbols and debug info

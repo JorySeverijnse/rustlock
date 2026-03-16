@@ -35,7 +35,7 @@ impl pam_client::ConversationHandler for LockConversation {
     }
 }
 
-pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channel::Channel<bool>) {
+pub fn create_and_run_auth_loop() -> Option<(channel::Sender<Zeroizing<String>>, channel::Channel<bool>)> {
     let username = get_current_username()
         .expect("Failed to get username")
         .to_str()
@@ -43,9 +43,16 @@ pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channe
         .to_string();
 
     let conversation = LockConversation { password: None };
-    let _context = Context::new(SERVICE_NAME, Some(username.as_str()), conversation)
-        .expect("Failed to initialize PAM context");
-    debug!("Prepared to authenticate user '{}'", username);
+    match Context::new(SERVICE_NAME, Some(username.as_str()), conversation) {
+        Ok(_) => {
+            debug!("Prepared to authenticate user '{}'", username);
+        }
+        Err(err) => {
+            error!("Failed to initialize PAM context: {:?}", err);
+            error!("Ensure that the PAM service '{}' is correctly configured.", SERVICE_NAME);
+            return None;
+        }
+    }
 
     let (auth_req_send, auth_req_recv) = channel::channel::<Zeroizing<String>>();
     let (auth_res_send, auth_res_recv) = channel::channel::<bool>();
@@ -59,15 +66,20 @@ pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channe
                     let conversation = LockConversation {
                         password: Some(password),
                     };
-                    let mut context =
-                        Context::new(SERVICE_NAME, Some(username.as_str()), conversation)
-                            .expect("Failed to initialize PAM context");
-                    match context.authenticate(Flag::NONE) {
-                        Ok(()) => {
-                            auth_res_send.send(true).unwrap();
+                    match Context::new(SERVICE_NAME, Some(username.as_str()), conversation) {
+                        Ok(mut context) => {
+                            match context.authenticate(Flag::NONE) {
+                                Ok(()) => {
+                                    auth_res_send.send(true).unwrap();
+                                }
+                                Err(err) => {
+                                    error!("Pam authenticate failed with {:?}", err);
+                                    auth_res_send.send(false).unwrap();
+                                }
+                            }
                         }
                         Err(err) => {
-                            error!("Pam authenticate failed with {:?}", err);
+                            error!("Failed to re-initialize PAM context: {:?}", err);
                             auth_res_send.send(false).unwrap();
                         }
                     }
@@ -81,5 +93,5 @@ pub fn create_and_run_auth_loop() -> (channel::Sender<Zeroizing<String>>, channe
         }
     });
 
-    (auth_req_send, auth_res_recv)
+    Some((auth_req_send, auth_res_recv))
 }

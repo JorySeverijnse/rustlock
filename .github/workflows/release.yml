@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: "default"
+            args: "--no-default-features"
+          - variant: "networking"
+            args: "--features networking"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            llvm clang libclang-dev \
+            pkg-config \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
+            libpam0g-dev \
+            libwayland-dev libxkbcommon-dev
+
+      - name: Build ${{ matrix.variant }}
+        run: cargo build --release ${{ matrix.args }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustlock-${{ matrix.variant }}-ubuntu
+          path: target/release/rustlock
+
+  build-debian:
+    runs-on: ubuntu-latest
+    container: debian:stable-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            llvm clang libclang-dev \
+            pkg-config \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
+            libpam0g-dev \
+            libwayland-dev libxkbcommon-dev \
+            cargo rust
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustlock-default-debian
+          path: target/release/rustlock
+
+  build-fedora:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          dnf install -y \
+            llvm clang libclang-devel \
+            pkg-config \
+            glib2-devel cairo-devel pango-devel atk-devel \
+            pam-devel \
+            wayland-devel libxkbcommon-devel \
+            rust cargo
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustlock-default-fedora
+          path: target/release/rustlock
+
+  build-arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          pacman -Sy --noconfirm \
+            llvm clang pkgconf \
+            glib2 cairo pango atk \
+            pam \
+            wayland libxkbcommon \
+            rust cargo
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustlock-default-arch
+          path: target/release/rustlock
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-ubuntu, build-debian, build-fedora, build-arch]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Determine tag
+        id: tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: RustLock v${{ steps.tag.outputs.VERSION }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+          files: |
+            artifacts/rustlock-default-ubuntu/rustlock
+            artifacts/rustlock-networking-ubuntu/rustlock
+            artifacts/rustlock-default-debian/rustlock
+            artifacts/rustlock-default-fedora/rustlock
+            artifacts/rustlock-default-arch/rustlock
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

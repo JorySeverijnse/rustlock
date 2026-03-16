@@ -10,7 +10,10 @@ pkgs.rustPlatform.buildRustPackage {
     cairo
     pam
     gdk-pixbuf
+    librsvg
+    pango
     libxkbcommon
+    dbus
   ];
 
   nativeBuildInputs = [
