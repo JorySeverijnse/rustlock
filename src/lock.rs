@@ -109,7 +109,6 @@ impl LockedSurface {
 
         // Update caps lock state in renderer
         self.renderer.caps_lock = self.input_handler.caps_lock();
-        log::debug!("Caps lock state: {}", self.input_handler.caps_lock());
 
         // Set background if available and not already applied
         if !self.background_applied {

@@ -17,7 +17,7 @@ pub struct SystemStatus {
     pub wifi_strength: Option<u8>,
     pub bluetooth_connected: bool,
     pub bluetooth_devices: Vec<String>,
-    pub keyboard_layout: Option<u32>,
+    pub keyboard_layout: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]

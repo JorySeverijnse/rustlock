@@ -238,7 +238,7 @@ impl Renderer {
             self.draw_password_display();
         }
 
-        if self.caps_lock {
+        if self.caps_lock && self.config.show_caps_lock_text {
             self.draw_caps_lock_indicator();
         }
 
@@ -351,13 +351,18 @@ impl Renderer {
             self.context.stroke().unwrap();
         }
 
-        self.context.new_path();
-        let (r, g, b, a) = self.config.ring_color;
-        self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
-        self.context.set_line_width(thickness);
-        self.context
-            .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
-        self.context.stroke().unwrap();
+    // Use caps lock color when caps lock is on and indicator is enabled, otherwise ring color
+    let (r, g, b, a) = if self.caps_lock {
+        self.config.caps_lock_color
+    } else {
+        self.config.ring_color
+    };
+    self.context.new_path();
+    self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
+    self.context.set_line_width(thickness);
+    self.context
+        .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
+    self.context.stroke().unwrap();
 
         let (r, g, b, a) = self.config.separator_color;
         if a > 0.0 {
@@ -388,12 +393,16 @@ impl Renderer {
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
         self.context.new_path();
-        self.context.set_font_size(12.0);
-        self.context.set_source_rgba(1.0, 0.5, 0.0, self.fade_alpha);
-        let text = "CAPS LOCK";
+        // Use configurable caps lock text color
+        let (r, g, b, a) = self.config.caps_lock_text_color;
+        self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
+        // Increase font size for bigger letters
+        self.context.set_font_size(24.0);
+        let text = "Caps Lock";
         let te = self.context.text_extents(text).unwrap();
+        // Position above the ring
         self.context
-            .move_to(center_x - te.width() / 2.0, center_y + radius / 1.1 + 20.0);
+            .move_to(center_x - te.width() / 2.0, center_y - radius - 10.0);
         self.context.show_text(text).unwrap();
     }
 
@@ -443,7 +452,11 @@ impl Renderer {
         };
 
         if intensity > 0.0 {
-            let (r, g, b, a) = self.config.key_hl_color;
+            let (r, g, b, a) = if self.caps_lock {
+                self.config.caps_lock_key_hl_color
+            } else {
+                self.config.key_hl_color
+            };
             self.context
                 .set_source_rgba(r, g, b, a * intensity * self.fade_alpha);
             self.context.set_line_width(thickness + 1.5);
@@ -708,17 +721,19 @@ impl Renderer {
     }
 
     fn draw_keyboard_layout(&self) {
-        if let Some(layout) = self.system_status.keyboard_layout {
-            let margin = 20.0;
-            let x = margin;
-            let y = margin + 80.0;
+        if self.config.show_keyboard_layout {
+            if let Some(ref layout) = self.system_status.keyboard_layout {
+                let margin = 20.0;
+                let x = margin;
+                let y = margin + 80.0;
 
-            self.context.new_path();
-            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
-            self.context.set_font_size(16.0);
-            let text = format!("Layout: {}", layout);
-            self.context.move_to(x, y);
-            self.context.show_text(&text).unwrap();
+                self.context.new_path();
+                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+                self.context.set_font_size(16.0);
+                let text = format!("Layout: {}", layout);
+                self.context.move_to(x, y);
+                self.context.show_text(&text).unwrap();
+            }
         }
     }
 

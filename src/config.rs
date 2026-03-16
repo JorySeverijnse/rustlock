@@ -42,6 +42,21 @@ pub struct Config {
     #[arg(long, default_value = "4EAC41", value_parser = util::parse_hex_color)]
     pub key_hl_color: (f64, f64, f64, f64),
 
+    #[arg(long, default_value = "4EAC41", value_parser = util::parse_hex_color)]
+    pub caps_lock_key_hl_color: (f64, f64, f64, f64),
+
+    #[arg(long, default_value = "DB3300", value_parser = util::parse_hex_color)]
+    pub caps_lock_bs_hl_color: (f64, f64, f64, f64),
+
+    #[arg(long, default_value = "E5A445", value_parser = util::parse_hex_color)]
+    pub caps_lock_color: (f64, f64, f64, f64),
+
+    #[arg(long, default_value = "E5A445", value_parser = util::parse_hex_color)]
+    pub caps_lock_text_color: (f64, f64, f64, f64),
+
+    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    pub show_caps_lock_text: bool,
+
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
     pub line_color: (f64, f64, f64, f64),
 
@@ -184,11 +199,12 @@ impl Config {
                     merge_f32(&mut config.grace, "grace");
                     merge_f32(&mut config.fade_in, "fade_in");
                     merge_string(&mut config.pam_service, "pam_service");
-                    merge_bool(&mut config.show_media, "show_media");
-                    merge_bool(&mut config.show_battery, "show_battery");
-                    merge_bool(&mut config.show_network, "show_network");
-                    merge_bool(&mut config.show_bluetooth, "show_bluetooth");
-                    merge_bool(&mut config.show_album_art, "show_album_art");
+                     merge_bool(&mut config.show_media, "show_media");
+                     merge_bool(&mut config.show_battery, "show_battery");
+                     merge_bool(&mut config.show_network, "show_network");
+                     merge_bool(&mut config.show_bluetooth, "show_bluetooth");
+                     merge_bool(&mut config.show_album_art, "show_album_art");
+                     merge_bool(&mut config.show_keyboard_layout, "show_keyboard_layout");
                     
                     if !is_cli("image") {
                         if let Some(toml::Value::String(s)) = table.get("image") {

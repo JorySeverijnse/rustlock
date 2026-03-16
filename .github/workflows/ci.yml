@@ -24,6 +24,7 @@ jobs:
             args: "--no-default-features"
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -31,7 +32,7 @@ jobs:
             llvm clang libclang-dev \
             pkg-config \
             libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
-            libpam0g-dev \
+            libpam0g-dev libdbus-1-dev \
             libwayland-dev libxkbcommon-dev
       - name: Build (${{ matrix.features }})
         run: cargo build --verbose ${{ matrix.args }}
@@ -43,6 +44,7 @@ jobs:
     container: debian:stable-slim
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           apt-get update
@@ -50,7 +52,7 @@ jobs:
             llvm clang libclang-dev \
             pkg-config \
             libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
-            libpam0g-dev \
+            libpam0g-dev libdbus-1-dev \
             libwayland-dev libxkbcommon-dev \
             cargo rustc
       - name: Build
@@ -61,13 +63,14 @@ jobs:
     container: fedora:latest
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           dnf install -y \
             llvm clang libclang-devel \
             pkg-config \
             glib2-devel cairo-devel pango-devel atk-devel \
-            pam-devel \
+            pam-devel dbus-devel \
             wayland-devel libxkbcommon-devel \
             cargo rust
       - name: Build
@@ -78,12 +81,13 @@ jobs:
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           pacman -Sy --noconfirm \
             llvm clang pkgconf \
             glib2 cairo pango atk \
-            pam \
+            pam dbus \
             wayland libxkbcommon \
             rust cargo
       - name: Build
@@ -94,13 +98,14 @@ jobs:
     container: opensuse/tumbleweed:latest
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           zypper install -y \
             llvm clang \
             pkg-config \
             glib2-devel cairo-devel pango-devel atk-devel \
-            pam-devel \
+            pam-devel dbus-1-devel \
             wayland-devel libxkbcommon-devel \
             rust cargo
       - name: Build

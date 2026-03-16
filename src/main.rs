@@ -724,7 +724,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         let mut status = state.system_manager.get_status();
-        status.keyboard_layout = Some(state.current_layout);
+            status.keyboard_layout = Some(state.current_layout.to_string());
 
         if let Ok(mut lm) = state.lock_manager.lock() {
             lm.set_system_status(status);
