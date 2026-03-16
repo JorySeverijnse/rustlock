@@ -21,7 +21,7 @@ pub struct Renderer {
     password_display: String,
     uptime_cache: String,
     last_uptime_update: Option<Instant>,
-    caps_lock: bool,
+    pub caps_lock: bool,
     pub system_status: SystemStatus,
     media_art_surface: Option<ImageSurface>,
     last_art_url: Option<String>,
@@ -228,6 +228,10 @@ impl Renderer {
 
         if self.config.show_bluetooth {
             self.draw_bluetooth();
+        }
+
+        if self.config.show_keyboard_layout {
+            self.draw_keyboard_layout();
         }
 
         if !self.password_display.is_empty() {
@@ -700,6 +704,21 @@ impl Renderer {
             self.context.set_font_size(14.0);
             self.context.move_to(x, y);
             self.context.show_text(text).unwrap();
+        }
+    }
+
+    fn draw_keyboard_layout(&self) {
+        if let Some(layout) = self.system_status.keyboard_layout {
+            let margin = 20.0;
+            let x = margin;
+            let y = margin + 80.0;
+
+            self.context.new_path();
+            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
+            self.context.set_font_size(16.0);
+            let text = format!("Layout: {}", layout);
+            self.context.move_to(x, y);
+            self.context.show_text(&text).unwrap();
         }
     }
 

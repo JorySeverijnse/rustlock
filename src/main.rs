@@ -5,7 +5,6 @@ mod lock;
 mod render;
 mod screenshot;
 mod system;
-mod timer;
 mod util;
 
 use config::Config;

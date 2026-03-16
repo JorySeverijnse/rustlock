@@ -102,6 +102,11 @@ impl InputHandler {
     /// Update timers (should be called periodically)
     pub fn update(&mut self) {
     }
+
+    /// Get the current Caps Lock state
+    pub fn caps_lock(&self) -> bool {
+        self.caps_lock
+    }
 }
 
 /// Actions that can result from keyboard input

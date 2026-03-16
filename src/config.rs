@@ -85,6 +85,9 @@ pub struct Config {
     #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
     pub show_album_art: bool,
 
+    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "false", default_missing_value = "true")]
+    pub show_keyboard_layout: bool,
+
     #[arg(long)]
     pub image: Option<PathBuf>,
 
