@@ -1,0 +1,17 @@
+name: Install system dependencies
+description: Install system dependencies required for building rustlock
+
+runs:
+  using: composite
+  steps:
+    - name: Install system dependencies (Ubuntu/Debian)
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          curl \
+          llvm clang libclang-dev \
+          pkg-config \
+          libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
+          libgdk-pixbuf-2.0-dev libpam0g-dev libdbus-1-dev \
+          libwayland-dev libxkbcommon-dev
