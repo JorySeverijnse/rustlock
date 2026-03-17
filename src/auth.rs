@@ -4,7 +4,7 @@ use std::thread;
 use log::{debug, error};
 use pam_client::{Context, ErrorCode, Flag};
 use smithay_client_toolkit::reexports::{calloop::channel, calloop::EventLoop};
-use users::get_current_username;
+use whoami::username;
 use zeroize::Zeroizing;
 
 const SERVICE_NAME: &str = "rustlock";
@@ -37,11 +37,7 @@ impl pam_client::ConversationHandler for LockConversation {
 
 pub fn create_and_run_auth_loop(
 ) -> Option<(channel::Sender<Zeroizing<String>>, channel::Channel<bool>)> {
-    let username = get_current_username()
-        .expect("Failed to get username")
-        .to_str()
-        .expect("Failed to get non-unicode username")
-        .to_string();
+    let username = username();
 
     let conversation = LockConversation { password: None };
     match Context::new(SERVICE_NAME, Some(username.as_str()), conversation) {
