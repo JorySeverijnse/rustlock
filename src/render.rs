@@ -499,8 +499,8 @@ impl Renderer {
             let art_size = 56.0;
             let spacing = 80.0;
 
-            if self.config.show_album_art {
-                if self.system_status.media_art_url != self.last_art_url {
+            if self.config.show_album_art
+                && self.system_status.media_art_url != self.last_art_url {
                     self.last_art_url = self.system_status.media_art_url.clone();
                     self.media_art_surface = None;
                     if let Some(ref data) = self.system_status.media_art_data {
@@ -526,7 +526,6 @@ impl Renderer {
                         }
                     }
                 }
-            }
 
             let has_art = self.config.show_album_art && self.media_art_surface.is_some();
             let text_x = if has_art {
@@ -654,25 +653,14 @@ impl Renderer {
                 self.context.move_to(text_x, y);
                 self.context.show_text(ssid).unwrap();
             } else {
-                let strength = self.system_status.wifi_strength.unwrap_or(0);
-                let icon = if strength > 75 {
-                    "📶"
-                } else if strength > 50 {
-                    "📶"
-                } else if strength > 25 {
-                    "📶"
-                } else {
-                    "📶"
-                };
-                let text = format!("{} {}", icon, ssid);
                 self.context.new_path();
                 self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
                 self.context.set_font_size(16.0);
                 self.context.move_to(x, y);
-                self.context.show_text(&text).unwrap();
+                self.context.show_text(ssid).unwrap();
             }
         } else {
-            let text = "📵 No WiFi";
+            let text = "No WiFi";
             self.context.new_path();
             self.context
                 .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);

@@ -394,24 +394,24 @@ impl ScreenshotManager {
                 flipped[dst_offset..dst_offset + src_stride]
                     .copy_from_slice(&converted_data[src_offset..src_offset + src_stride]);
             }
-            return Ok(ImageSurface::create_for_data(
+            return ImageSurface::create_for_data(
                 flipped,
                 cairo::Format::ARgb32,
                 info.width as i32,
                 info.height as i32,
                 src_stride as i32,
             )
-            .context("Failed to create flipped Cairo surface")?);
+            .context("Failed to create flipped Cairo surface");
         }
 
-        Ok(ImageSurface::create_for_data(
+        ImageSurface::create_for_data(
             converted_data,
             cairo::Format::ARgb32,
             info.width as i32,
             info.height as i32,
             pixel_width as i32,
         )
-        .context("Failed to create Cairo surface")?)
+        .context("Failed to create Cairo surface")
     }
 }
 

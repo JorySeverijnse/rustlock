@@ -230,7 +230,7 @@ impl SystemManager {
                                     )
                                 ).await;
 
-                                if let Err(_) = result {
+                                if result.is_err() {
                                     error!("System command {} timed out", method);
                                 }
                             }

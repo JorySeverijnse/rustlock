@@ -20,5 +20,6 @@ pkgs.rustPlatform.buildRustPackage {
     pkgs.pkg-config
     pkgs.rustPlatform.bindgenHook
     pkgs.rustfmt
+    pkgs.clippy
   ];
 }

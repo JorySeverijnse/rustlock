@@ -160,7 +160,7 @@ impl WaylandLock {
         if let Some(info) = self.output_state.info(output) {
             if let Some(mode) = info.modes.first() {
                 let (w, h) = mode.dimensions;
-                return (w as i32, h as i32);
+                return (w, h);
             }
         }
         (1920, 1080)
@@ -587,6 +587,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Debug))?;
 
     log::info!("Starting rustlock v{}", env!("CARGO_PKG_VERSION"));
+    #[allow(clippy::arc_with_non_send_sync)]
     let lock_manager = Arc::new(Mutex::new(LockManager::new(config.clone())));
     let ctrlc_exit = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
@@ -626,7 +627,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         registry_state: RegistryState::new(&globals),
         session_lock_state: SessionLockState::new(&globals, &qh),
         seat_state: SeatState::new(&globals, &qh),
-        shm_state: shm_state,
+        shm_state,
         pool,
         session_lock: None,
         lock_surfaces: Vec::new(),

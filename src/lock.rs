@@ -69,7 +69,7 @@ impl LockedSurface {
         use wayland_client::Proxy;
         self.wayland_surface
             .as_ref()
-            .map_or(false, |ws| ws.id() == surface.id())
+            .is_some_and(|ws| ws.id() == surface.id())
     }
 
     /// Update the surface state (called on each frame)
