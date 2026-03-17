@@ -94,25 +94,20 @@ jobs:
         with:
           path: artifacts
 
-      - name: List artifacts
-        run: ls -la artifacts/
-
       - name: Determine tag
         id: tag
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: RustLock v${{ steps.tag.outputs.VERSION }}
           draft: true
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
           files: |
-            artifacts/rustlock-default-ubuntu/rustlock
-            artifacts/rustlock-no-networking-ubuntu/rustlock
-            artifacts/rustlock-default-debian/rustlock
-            artifacts/rustlock-default-fedora/rustlock
-            artifacts/rustlock-default-arch/rustlock
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            artifacts/rustlock-default-ubuntu/rustlock/rustlock
+            artifacts/rustlock-no-networking-ubuntu/rustlock/rustlock
+            artifacts/rustlock-default-debian/rustlock/rustlock
+            artifacts/rustlock-default-fedora/rustlock/rustlock
+            artifacts/rustlock-default-arch/rustlock/rustlock
