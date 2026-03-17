@@ -33,10 +33,7 @@ jobs:
       - name: Run cargo audit
         run: cargo audit
       
-      - name: Run cargo deny (advisories only)
-        run: cargo deny check advisories
-      
-      - name: Run cargo deny (full check)
+      - name: Run cargo deny
         run: cargo deny check
       
       - name: Generate Software Bill of Materials (SBOM)
@@ -65,4 +62,3 @@ jobs:
           echo "✅ Outdated dependencies checked"
           echo ""
           echo "Next scheduled scan: Weekly (Sunday 00:00 UTC)"
-          echo "Manual trigger: Click 'Run workflow' in GitHub Actions"

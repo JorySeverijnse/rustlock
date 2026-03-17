@@ -38,12 +38,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
       
-      - name: Install cargo-deny
-        run: cargo install cargo-deny 
-      
-      - name: Check dependencies with cargo-deny
-        run: cargo deny check
-      
       - name: Run unit tests
         run: cargo test --quiet
       

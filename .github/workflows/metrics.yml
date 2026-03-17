@@ -21,10 +21,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       
-      - name: Install Rust with tools
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
       
 
       
@@ -77,21 +75,3 @@ jobs:
           name: dependency-graph
           path: deps.dot
           retention-days: 30
-      
-      - name: Metrics summary
-        run: |
-          echo "=== Build Metrics Summary ==="
-          echo ""
-          echo "📊 Coverage: HTML and Lcov reports generated"
-          echo "📈 LOC: Lines of code counted and saved"
-          echo "🔗 Dependencies: Graph visualization available"
-          echo ""
-          echo "Artifacts available for 30 days:"
-          echo "  - coverage-report/"
-          echo "  - loc-metrics/loc.json"
-          echo "  - dependency-graph/deps.dot"
-          echo ""
-          echo "Next steps:"
-          echo "1. Review coverage reports to identify untested code"
-          echo "2. Monitor LOC growth over time"
-          echo "3. Analyze dependency graph for optimization opportunities"
