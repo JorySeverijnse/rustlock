@@ -35,7 +35,8 @@ impl pam_client::ConversationHandler for LockConversation {
     }
 }
 
-pub fn create_and_run_auth_loop() -> Option<(channel::Sender<Zeroizing<String>>, channel::Channel<bool>)> {
+pub fn create_and_run_auth_loop(
+) -> Option<(channel::Sender<Zeroizing<String>>, channel::Channel<bool>)> {
     let username = get_current_username()
         .expect("Failed to get username")
         .to_str()
@@ -49,7 +50,10 @@ pub fn create_and_run_auth_loop() -> Option<(channel::Sender<Zeroizing<String>>,
         }
         Err(err) => {
             error!("Failed to initialize PAM context: {:?}", err);
-            error!("Ensure that the PAM service '{}' is correctly configured.", SERVICE_NAME);
+            error!(
+                "Ensure that the PAM service '{}' is correctly configured.",
+                SERVICE_NAME
+            );
             return None;
         }
     }
@@ -67,17 +71,15 @@ pub fn create_and_run_auth_loop() -> Option<(channel::Sender<Zeroizing<String>>,
                         password: Some(password),
                     };
                     match Context::new(SERVICE_NAME, Some(username.as_str()), conversation) {
-                        Ok(mut context) => {
-                            match context.authenticate(Flag::NONE) {
-                                Ok(()) => {
-                                    auth_res_send.send(true).unwrap();
-                                }
-                                Err(err) => {
-                                    error!("Pam authenticate failed with {:?}", err);
-                                    auth_res_send.send(false).unwrap();
-                                }
+                        Ok(mut context) => match context.authenticate(Flag::NONE) {
+                            Ok(()) => {
+                                auth_res_send.send(true).unwrap();
                             }
-                        }
+                            Err(err) => {
+                                error!("Pam authenticate failed with {:?}", err);
+                                auth_res_send.send(false).unwrap();
+                            }
+                        },
                         Err(err) => {
                             error!("Failed to re-initialize PAM context: {:?}", err);
                             auth_res_send.send(false).unwrap();

@@ -135,15 +135,14 @@ pub struct Config {
 impl Config {
     pub fn load() -> Self {
         use clap::CommandFactory;
-        
+
         let mut config = Config::parse();
         let cmd = Config::command();
         let matches = cmd.get_matches();
 
         // Helper to check if a value was explicitly set on command line
-        let is_cli = |key: &str| {
-            matches.value_source(key) == Some(clap::parser::ValueSource::CommandLine)
-        };
+        let is_cli =
+            |key: &str| matches.value_source(key) == Some(clap::parser::ValueSource::CommandLine);
 
         // 1. Config file layer (overrides defaults and themes)
         let config_path = config.config.clone().unwrap_or_else(|| {
@@ -156,7 +155,7 @@ impl Config {
             if let Ok(file_content) = std::fs::read_to_string(&config_path) {
                 if let Ok(table) = toml::from_str::<toml::Table>(&file_content) {
                     log::debug!("Loaded configuration from {:?}", config_path);
-                    
+
                     let merge_bool = |val: &mut bool, key: &str| {
                         if !is_cli(key) {
                             if let Some(toml::Value::Boolean(b)) = table.get(key) {
@@ -199,55 +198,55 @@ impl Config {
                     merge_f32(&mut config.grace, "grace");
                     merge_f32(&mut config.fade_in, "fade_in");
                     merge_string(&mut config.pam_service, "pam_service");
-                     merge_bool(&mut config.show_media, "show_media");
-                     merge_bool(&mut config.show_battery, "show_battery");
-                     merge_bool(&mut config.show_network, "show_network");
-                     merge_bool(&mut config.show_bluetooth, "show_bluetooth");
-                     merge_bool(&mut config.show_album_art, "show_album_art");
-                     merge_bool(&mut config.show_keyboard_layout, "show_keyboard_layout");
-                    
+                    merge_bool(&mut config.show_media, "show_media");
+                    merge_bool(&mut config.show_battery, "show_battery");
+                    merge_bool(&mut config.show_network, "show_network");
+                    merge_bool(&mut config.show_bluetooth, "show_bluetooth");
+                    merge_bool(&mut config.show_album_art, "show_album_art");
+                    merge_bool(&mut config.show_keyboard_layout, "show_keyboard_layout");
+
                     if !is_cli("image") {
                         if let Some(toml::Value::String(s)) = table.get("image") {
                             config.image = Some(std::path::PathBuf::from(s));
                         }
                     }
-                    
+
                     if !is_cli("wifi_icon") {
                         if let Some(toml::Value::String(s)) = table.get("wifi_icon") {
                             config.wifi_icon = Some(s.clone());
                         }
                     }
-                    
+
                     if !is_cli("bluetooth_icon") {
                         if let Some(toml::Value::String(s)) = table.get("bluetooth_icon") {
                             config.bluetooth_icon = Some(s.clone());
                         }
                     }
-                    
+
                     if !is_cli("battery_icon") {
                         if let Some(toml::Value::String(s)) = table.get("battery_icon") {
                             config.battery_icon = Some(s.clone());
                         }
                     }
-                    
+
                     if !is_cli("media_prev_icon") {
                         if let Some(toml::Value::String(s)) = table.get("media_prev_icon") {
                             config.media_prev_icon = Some(s.clone());
                         }
                     }
-                    
+
                     if !is_cli("media_stop_icon") {
                         if let Some(toml::Value::String(s)) = table.get("media_stop_icon") {
                             config.media_stop_icon = Some(s.clone());
                         }
                     }
-                    
+
                     if !is_cli("media_play_icon") {
                         if let Some(toml::Value::String(s)) = table.get("media_play_icon") {
                             config.media_play_icon = Some(s.clone());
                         }
                     }
-                    
+
                     if !is_cli("media_next_icon") {
                         if let Some(toml::Value::String(s)) = table.get("media_next_icon") {
                             config.media_next_icon = Some(s.clone());
@@ -261,20 +260,40 @@ impl Config {
         if let Some(theme) = &config.theme {
             match theme.as_str() {
                 "modern" => {
-                    if config.effect_blur.is_none() && !is_cli("effect_blur") { config.effect_blur = Some((10, 3)); }
-                    if config.effect_vignette.is_none() && !is_cli("effect_vignette") { config.effect_vignette = Some((0.5, 0.5)); }
-                    if !is_cli("indicator_radius") { config.indicator_radius = 120; }
-                    if !is_cli("ring_color") { config.ring_color = (0.2, 0.6, 0.8, 1.0); }
+                    if config.effect_blur.is_none() && !is_cli("effect_blur") {
+                        config.effect_blur = Some((10, 3));
+                    }
+                    if config.effect_vignette.is_none() && !is_cli("effect_vignette") {
+                        config.effect_vignette = Some((0.5, 0.5));
+                    }
+                    if !is_cli("indicator_radius") {
+                        config.indicator_radius = 120;
+                    }
+                    if !is_cli("ring_color") {
+                        config.ring_color = (0.2, 0.6, 0.8, 1.0);
+                    }
                 }
                 "pixel" => {
-                    if config.effect_pixelate.is_none() && !is_cli("effect_pixelate") { config.effect_pixelate = Some(10); }
-                    if !is_cli("indicator_radius") { config.indicator_radius = 80; }
-                    if !is_cli("ring_color") { config.ring_color = (0.8, 0.2, 0.2, 1.0); }
+                    if config.effect_pixelate.is_none() && !is_cli("effect_pixelate") {
+                        config.effect_pixelate = Some(10);
+                    }
+                    if !is_cli("indicator_radius") {
+                        config.indicator_radius = 80;
+                    }
+                    if !is_cli("ring_color") {
+                        config.ring_color = (0.8, 0.2, 0.2, 1.0);
+                    }
                 }
                 "glass" => {
-                    if config.effect_blur.is_none() && !is_cli("effect_blur") { config.effect_blur = Some((20, 5)); }
-                    if !is_cli("inside_color") { config.inside_color = (1.0, 1.0, 1.0, 0.1); }
-                    if !is_cli("ring_color") { config.ring_color = (1.0, 1.0, 1.0, 0.5); }
+                    if config.effect_blur.is_none() && !is_cli("effect_blur") {
+                        config.effect_blur = Some((20, 5));
+                    }
+                    if !is_cli("inside_color") {
+                        config.inside_color = (1.0, 1.0, 1.0, 0.1);
+                    }
+                    if !is_cli("ring_color") {
+                        config.ring_color = (1.0, 1.0, 1.0, 0.5);
+                    }
                 }
                 _ => {
                     log::warn!("Unknown theme: {}", theme);

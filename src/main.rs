@@ -10,12 +10,12 @@ mod util;
 use config::Config;
 use lock::LockManager;
 use screenshot::{CaptureData, Screenshot, ScreenshotManager};
-use system::SystemManager;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use system::SystemManager;
 use wayland_client::protocol::wl_output::WlOutput;
 use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
@@ -489,7 +489,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
                 stride,
             } => {
                 let format = format.into_result().unwrap();
-                
+
                 let mut info = data.info.lock().unwrap();
                 *info = Some(screenshot::BufferInfo {
                     width,
@@ -503,7 +503,8 @@ impl Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
                 let size = (stride as usize) * (height as usize);
                 match SlotPool::new(size, &state.shm_state) {
                     Ok(mut pool) => {
-                        match pool.create_buffer(width as i32, height as i32, stride as i32, format) {
+                        match pool.create_buffer(width as i32, height as i32, stride as i32, format)
+                        {
                             Ok((buffer, _canvas)) => {
                                 frame.copy(buffer.wl_buffer());
                                 *data.buffer.lock().unwrap() = Some(buffer);
@@ -525,8 +526,10 @@ impl Dispatch<ZwlrScreencopyFrameV1, CaptureData> for WaylandLock {
                     let info = data.info.lock().unwrap().take();
                     let flags = data.flags.lock().unwrap().take();
                     let pool = data.pool.lock().unwrap().take();
-                    
-                    if let (Some(buffer), Some(info), Some(flags), Some(mut pool)) = (buffer, info, flags, pool) {
+
+                    if let (Some(buffer), Some(info), Some(flags), Some(mut pool)) =
+                        (buffer, info, flags, pool)
+                    {
                         let handle = screenshot::ScreencopyBufferHandle {
                             buffer,
                             info,
@@ -608,7 +611,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize state without pool first
     // We'll create the pool after we know the output dimensions
-    
+
     // Initialize pool with a minimal size, it will be resized once outputs are detected
     let pool = SlotPool::new(1, &shm_state)?;
 
@@ -648,7 +651,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Ok(img) = image::open(image_path) {
             let img = img.to_rgba8();
             let (w, h) = img.dimensions();
-            let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, w as i32, h as i32).unwrap();
+            let mut surface =
+                cairo::ImageSurface::create(cairo::Format::ARgb32, w as i32, h as i32).unwrap();
             {
                 let mut surface_data = surface.data().unwrap();
                 for y in 0..h {
@@ -662,18 +666,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
             }
-            
+
             let mut ss = Screenshot::new(surface);
             let _ = ss.apply_effects(&state.config);
             let surface = ss.into_inner();
-            
+
             let num_outputs = state.output_state.outputs().count();
             state.captured_backgrounds = vec![Some(surface); num_outputs];
-            
+
             // Disable screenshots if image was successfully loaded
             state.config.screenshots = false;
         } else {
-            log::error!("Failed to load custom background image from {:?}", image_path);
+            log::error!(
+                "Failed to load custom background image from {:?}",
+                image_path
+            );
         }
     }
 
@@ -724,7 +731,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         let mut status = state.system_manager.get_status();
-            status.keyboard_layout = Some(state.current_layout.to_string());
+        status.keyboard_layout = Some(state.current_layout.to_string());
 
         if let Ok(mut lm) = state.lock_manager.lock() {
             lm.set_system_status(status);

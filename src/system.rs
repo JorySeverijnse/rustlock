@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
+use log::{debug, error};
 use mpris::PlayerFinder;
-use zbus::Connection;
-use log::{error, debug};
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+use zbus::Connection;
 
 #[derive(Clone, Default)]
 pub struct SystemStatus {
@@ -89,7 +89,7 @@ impl SystemManager {
                                         new_status.media_title = metadata.title().map(|s| s.to_string());
                                         new_status.media_artist = metadata.artists().map(|a| a.join(", "));
                                         new_status.media_art_url = metadata.art_url().map(|u| u.to_string());
-                                        
+
                                         if new_status.media_art_url != last_art_url {
                                             last_art_url = new_status.media_art_url.clone();
                                             last_art_data = None;
@@ -216,7 +216,7 @@ impl SystemManager {
                                     SystemCommand::Reboot => "Reboot",
                                     SystemCommand::Suspend => "Suspend",
                                 };
-                                
+
                                 debug!("Executing system command: {}", method);
                                 // Set a timeout for the DBus call to prevent hanging the background thread
                                 let result = tokio::time::timeout(

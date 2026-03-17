@@ -19,5 +19,6 @@ pkgs.rustPlatform.buildRustPackage {
   nativeBuildInputs = [
     pkgs.pkg-config
     pkgs.rustPlatform.bindgenHook
+    pkgs.rustfmt
   ];
 }

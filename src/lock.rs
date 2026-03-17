@@ -165,11 +165,9 @@ impl LockedSurface {
         event: smithay_client_toolkit::seat::keyboard::KeyEvent,
         modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
     ) -> Option<InputAction> {
-        let action = self.input_handler.handle_key_event(
-            event.keysym,
-            event.utf8,
-            modifiers,
-        );
+        let action = self
+            .input_handler
+            .handle_key_event(event.keysym, event.utf8, modifiers);
 
         match action {
             InputAction::PasswordChanged => {

@@ -115,10 +115,10 @@ impl Screenshot {
             for y in 0..height {
                 melt_amount += rng.gen_range(0.0..factor);
                 let src_y = (y as f32 - melt_amount).max(0.0) as i32;
-                
+
                 let src_idx = (src_y as usize * stride) + (x as usize * 4);
                 let dst_idx = (y as usize * stride) + (x as usize * 4);
-                
+
                 // Copy the pixel from above to create a smear
                 let pixel = [
                     data[src_idx],

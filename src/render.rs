@@ -351,18 +351,18 @@ impl Renderer {
             self.context.stroke().unwrap();
         }
 
-    // Use caps lock color when caps lock is on and indicator is enabled, otherwise ring color
-    let (r, g, b, a) = if self.caps_lock {
-        self.config.caps_lock_color
-    } else {
-        self.config.ring_color
-    };
-    self.context.new_path();
-    self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
-    self.context.set_line_width(thickness);
-    self.context
-        .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
-    self.context.stroke().unwrap();
+        // Use caps lock color when caps lock is on and indicator is enabled, otherwise ring color
+        let (r, g, b, a) = if self.caps_lock {
+            self.config.caps_lock_color
+        } else {
+            self.config.ring_color
+        };
+        self.context.new_path();
+        self.context.set_source_rgba(r, g, b, a * self.fade_alpha);
+        self.context.set_line_width(thickness);
+        self.context
+            .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
+        self.context.stroke().unwrap();
 
         let (r, g, b, a) = self.config.separator_color;
         if a > 0.0 {
@@ -507,7 +507,8 @@ impl Renderer {
                         if let Ok(img) = image::load_from_memory(data) {
                             let img = img.to_rgba8();
                             let (w, h) = img.dimensions();
-                            let mut surface = ImageSurface::create(Format::ARgb32, w as i32, h as i32).unwrap();
+                            let mut surface =
+                                ImageSurface::create(Format::ARgb32, w as i32, h as i32).unwrap();
                             {
                                 let mut surface_data = surface.data().unwrap();
                                 for y in 0..h {
@@ -528,7 +529,11 @@ impl Renderer {
             }
 
             let has_art = self.config.show_album_art && self.media_art_surface.is_some();
-            let text_x = if has_art { center_x - spacing / 2.0 } else { center_x };
+            let text_x = if has_art {
+                center_x - spacing / 2.0
+            } else {
+                center_x
+            };
             let art_x = center_x - spacing - art_size / 2.0;
 
             if has_art {
@@ -544,7 +549,8 @@ impl Renderer {
             }
 
             self.context.new_path();
-            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.9);
+            self.context
+                .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.9);
             self.context.set_font_size(16.0);
 
             let display_text = if let Some(ref artist) = self.system_status.media_artist {
@@ -554,14 +560,19 @@ impl Renderer {
             };
 
             let te = self.context.text_extents(&display_text).unwrap();
-            self.context.move_to(text_x - te.width() / 2.0, start_y + 20.0);
+            self.context
+                .move_to(text_x - te.width() / 2.0, start_y + 20.0);
             self.context.show_text(&display_text).unwrap();
 
-            let status_text = if self.system_status.media_playing { 
+            let status_text = if self.system_status.media_playing {
                 if let Some(ref icon) = self.media_play_icon_surface {
                     // Draw play icon instead of text
                     let play_y = start_y + 40.0;
-                    self.draw_icon_at(center_x - icon.width() as f64 / 2.0, play_y - icon.height() as f64 / 2.0, icon);
+                    self.draw_icon_at(
+                        center_x - icon.width() as f64 / 2.0,
+                        play_y - icon.height() as f64 / 2.0,
+                        icon,
+                    );
                     ""
                 } else {
                     "▶ Playing"
@@ -569,51 +580,57 @@ impl Renderer {
             } else {
                 "⏸ Paused"
             };
-            
+
             if !status_text.is_empty() {
                 self.context.set_font_size(12.0);
                 let se = self.context.text_extents(status_text).unwrap();
-                self.context.move_to(text_x - se.width() / 2.0, start_y + 40.0);
+                self.context
+                    .move_to(text_x - se.width() / 2.0, start_y + 40.0);
                 self.context.show_text(status_text).unwrap();
             }
 
             let controls_y = start_y + 65.0;
-            
+
             // Draw media control icons
             let icon_size = 20.0;
             let icon_spacing = 40.0;
             let controls_center_x = center_x;
-            
+
             // Previous icon
             if let Some(ref icon) = self.media_prev_icon_surface {
                 let ix = controls_center_x - icon_spacing;
                 self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
             } else {
-                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
+                self.context
+                    .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
                 self.context.set_font_size(16.0);
-                self.context.move_to(controls_center_x - icon_spacing - 8.0, controls_y);
+                self.context
+                    .move_to(controls_center_x - icon_spacing - 8.0, controls_y);
                 self.context.show_text("⏮").unwrap();
             }
-            
+
             // Stop icon
             if let Some(ref icon) = self.media_stop_icon_surface {
                 let ix = controls_center_x;
                 self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
             } else {
-                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
+                self.context
+                    .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
                 self.context.set_font_size(16.0);
                 self.context.move_to(controls_center_x - 8.0, controls_y);
                 self.context.show_text("⏹").unwrap();
             }
-            
+
             // Next icon
             if let Some(ref icon) = self.media_next_icon_surface {
                 let ix = controls_center_x + icon_spacing;
                 self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
             } else {
-                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
+                self.context
+                    .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
                 self.context.set_font_size(16.0);
-                self.context.move_to(controls_center_x + icon_spacing - 8.0, controls_y);
+                self.context
+                    .move_to(controls_center_x + icon_spacing - 8.0, controls_y);
                 self.context.show_text("⏭").unwrap();
             }
         }
@@ -638,7 +655,15 @@ impl Renderer {
                 self.context.show_text(ssid).unwrap();
             } else {
                 let strength = self.system_status.wifi_strength.unwrap_or(0);
-                let icon = if strength > 75 { "📶" } else if strength > 50 { "📶" } else if strength > 25 { "📶" } else { "📶" };
+                let icon = if strength > 75 {
+                    "📶"
+                } else if strength > 50 {
+                    "📶"
+                } else if strength > 25 {
+                    "📶"
+                } else {
+                    "📶"
+                };
                 let text = format!("{} {}", icon, ssid);
                 self.context.new_path();
                 self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
@@ -649,7 +674,8 @@ impl Renderer {
         } else {
             let text = "📵 No WiFi";
             self.context.new_path();
-            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
+            self.context
+                .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
             self.context.set_font_size(16.0);
             self.context.move_to(x, y);
             self.context.show_text(text).unwrap();
@@ -673,7 +699,14 @@ impl Renderer {
                 self.context.move_to(text_x, y);
                 self.context.show_text(&battery_text).unwrap();
             } else {
-                self.draw_battery_icon_at(x, y - 12.0, icon_width, 15.0, percent, self.system_status.is_charging);
+                self.draw_battery_icon_at(
+                    x,
+                    y - 12.0,
+                    icon_width,
+                    15.0,
+                    percent,
+                    self.system_status.is_charging,
+                );
                 let battery_text = format!("{:.0}%", percent);
                 self.context.new_path();
                 self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
@@ -703,7 +736,10 @@ impl Renderer {
                 self.context.move_to(text_x, y);
                 self.context.show_text(&devices).unwrap();
             } else {
-                let text = format!("🔵 {} device(s)", self.system_status.bluetooth_devices.len());
+                let text = format!(
+                    "🔵 {} device(s)",
+                    self.system_status.bluetooth_devices.len()
+                );
                 self.context.new_path();
                 self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
                 self.context.set_font_size(14.0);
@@ -713,7 +749,8 @@ impl Renderer {
         } else {
             let text = "🔴 Bluetooth off";
             self.context.new_path();
-            self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
+            self.context
+                .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
             self.context.set_font_size(14.0);
             self.context.move_to(x, y);
             self.context.show_text(text).unwrap();
@@ -750,7 +787,15 @@ impl Renderer {
         self.context.restore().unwrap();
     }
 
-    fn draw_battery_icon_at(&self, x: f64, y: f64, width: f64, height: f64, percent: f64, charging: bool) {
+    fn draw_battery_icon_at(
+        &self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        percent: f64,
+        charging: bool,
+    ) {
         let alpha = self.fade_alpha;
         self.context.new_path();
         self.context.set_source_rgba(1.0, 1.0, 1.0, alpha * 0.5);
@@ -758,7 +803,8 @@ impl Renderer {
         self.context.rectangle(x, y, width, height);
         self.context.stroke().unwrap();
         self.context.new_path();
-        self.context.rectangle(x + width, y + height / 4.0, 3.0, height / 2.0);
+        self.context
+            .rectangle(x + width, y + height / 4.0, 3.0, height / 2.0);
         self.context.fill().unwrap();
         let fill_width = (width - 4.0) * (percent / 100.0);
         self.context.new_path();
@@ -767,7 +813,8 @@ impl Renderer {
         } else {
             self.context.set_source_rgba(0.2, 1.0, 0.2, alpha * 0.8);
         }
-        self.context.rectangle(x + 2.0, y + 2.0, fill_width, height - 4.0);
+        self.context
+            .rectangle(x + 2.0, y + 2.0, fill_width, height - 4.0);
         self.context.fill().unwrap();
         if charging {
             self.context.new_path();
