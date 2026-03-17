@@ -106,8 +106,8 @@ jobs:
           draft: true
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
           files: |
-            artifacts/rustlock-default-ubuntu/rustlock/rustlock
-            artifacts/rustlock-no-networking-ubuntu/rustlock/rustlock
-            artifacts/rustlock-default-debian/rustlock/rustlock
-            artifacts/rustlock-default-fedora/rustlock/rustlock
-            artifacts/rustlock-default-arch/rustlock/rustlock
+            artifacts/rustlock-default-ubuntu/rustlock/rustlock:rustlock-default-ubuntu
+            artifacts/rustlock-no-networking-ubuntu/rustlock/rustlock:rustlock-no-networking-ubuntu
+            artifacts/rustlock-default-debian/rustlock/rustlock:rustlock-default-debian
+            artifacts/rustlock-default-fedora/rustlock/rustlock:rustlock-default-fedora
+            artifacts/rustlock-default-arch/rustlock/rustlock:rustlock-default-arch
