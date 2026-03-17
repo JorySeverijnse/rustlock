@@ -499,33 +499,32 @@ impl Renderer {
             let art_size = 56.0;
             let spacing = 80.0;
 
-            if self.config.show_album_art
-                && self.system_status.media_art_url != self.last_art_url {
-                    self.last_art_url = self.system_status.media_art_url.clone();
-                    self.media_art_surface = None;
-                    if let Some(ref data) = self.system_status.media_art_data {
-                        if let Ok(img) = image::load_from_memory(data) {
-                            let img = img.to_rgba8();
-                            let (w, h) = img.dimensions();
-                            let mut surface =
-                                ImageSurface::create(Format::ARgb32, w as i32, h as i32).unwrap();
-                            {
-                                let mut surface_data = surface.data().unwrap();
-                                for y in 0..h {
-                                    for x in 0..w {
-                                        let pixel = img.get_pixel(x, y);
-                                        let idx = ((y * w + x) * 4) as usize;
-                                        surface_data[idx] = pixel[2];
-                                        surface_data[idx + 1] = pixel[1];
-                                        surface_data[idx + 2] = pixel[0];
-                                        surface_data[idx + 3] = pixel[3];
-                                    }
+            if self.config.show_album_art && self.system_status.media_art_url != self.last_art_url {
+                self.last_art_url = self.system_status.media_art_url.clone();
+                self.media_art_surface = None;
+                if let Some(ref data) = self.system_status.media_art_data {
+                    if let Ok(img) = image::load_from_memory(data) {
+                        let img = img.to_rgba8();
+                        let (w, h) = img.dimensions();
+                        let mut surface =
+                            ImageSurface::create(Format::ARgb32, w as i32, h as i32).unwrap();
+                        {
+                            let mut surface_data = surface.data().unwrap();
+                            for y in 0..h {
+                                for x in 0..w {
+                                    let pixel = img.get_pixel(x, y);
+                                    let idx = ((y * w + x) * 4) as usize;
+                                    surface_data[idx] = pixel[2];
+                                    surface_data[idx + 1] = pixel[1];
+                                    surface_data[idx + 2] = pixel[0];
+                                    surface_data[idx + 3] = pixel[3];
                                 }
                             }
-                            self.media_art_surface = Some(surface);
                         }
+                        self.media_art_surface = Some(surface);
                     }
                 }
+            }
 
             let has_art = self.config.show_album_art && self.media_art_surface.is_some();
             let text_x = if has_art {

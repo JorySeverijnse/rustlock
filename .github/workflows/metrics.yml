@@ -57,7 +57,7 @@ jobs:
       - name: Generate dependency graph
         run: |
           cargo install cargo-depgraph
-          cargo depgraph --all-features --dedup-transitive --format dot > deps.dot
+          cargo depgraph --all-features --dedup-transitive-deps --format dot > deps.dot
           echo "Dependency graph generated: deps.dot"
           echo "Total dependencies: $(cargo tree --depth 0 | wc -l)"
       
