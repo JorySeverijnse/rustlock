@@ -1,0 +1,227 @@
+name: Multi-Distro Build
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: "default"
+            args: ""
+          - features: "no-default-features"
+            args: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            llvm clang libclang-dev \
+            pkg-config \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
+            libpam0g-dev libdbus-1-dev \
+            libwayland-dev libxkbcommon-dev
+      - name: Build (${{ matrix.features }})
+        run: cargo build --verbose ${{ matrix.args }}
+      - name: Run tests
+        run: cargo test --verbose ${{ matrix.args }}
+      - name: Build release for size check
+        run: cargo build --release ${{ matrix.args }}
+      - name: Check binary size
+        run: |
+          size=$(wc -c < target/release/rustlock)
+          echo "Binary size (${{ matrix.features }}): $size bytes"
+          if [ "${{ matrix.features }}" = "no-default-features" ] && [ $size -gt 3000000 ]; then
+            echo "❌ Binary size exceeds 3MB threshold for no-networking build"
+            exit 1
+          elif [ "${{ matrix.features }}" = "default" ] && [ $size -gt 5000000 ]; then
+            echo "❌ Binary size exceeds 5MB threshold for networking build"
+            exit 1
+          fi
+          echo "✅ Binary size within limits"
+
+  build-debian:
+    runs-on: ubuntu-latest
+    container: debian:stable-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: "default"
+            args: ""
+          - features: "no-default-features"
+            args: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            curl \
+            llvm clang libclang-dev \
+            pkg-config \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev libpam0g-dev libdbus-1-dev \
+            libwayland-dev libxkbcommon-dev
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build (${{ matrix.features }})
+        run: cargo build --verbose ${{ matrix.args }}
+      - name: Run tests
+        run: cargo test --verbose ${{ matrix.args }}
+      - name: Build release for size check
+        run: cargo build --release ${{ matrix.args }}
+      - name: Check binary size
+        run: |
+          size=$(wc -c < target/release/rustlock)
+          echo "Binary size (${{ matrix.features }}): $size bytes"
+          if [ "${{ matrix.features }}" = "no-default-features" ] && [ $size -gt 3000000 ]; then
+            echo "❌ Binary size exceeds 3MB threshold for no-networking build"
+            exit 1
+          elif [ "${{ matrix.features }}" = "default" ] && [ $size -gt 5000000 ]; then
+            echo "❌ Binary size exceeds 5MB threshold for networking build"
+            exit 1
+          fi
+          echo "✅ Binary size within limits"
+
+  build-fedora:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: "default"
+            args: ""
+          - features: "no-default-features"
+            args: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          dnf install -y \
+            curl \
+            llvm clang clang-devel \
+            pkgconfig \
+            glib2-devel cairo-devel cairo-gobject-devel pango-devel atk-devel \
+            gdk-pixbuf2-devel pam-devel dbus-devel \
+            wayland-devel libxkbcommon-devel
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build (${{ matrix.features }})
+        run: cargo build --verbose ${{ matrix.args }}
+      - name: Run tests
+        run: cargo test --verbose ${{ matrix.args }}
+      - name: Build release for size check
+        run: cargo build --release ${{ matrix.args }}
+      - name: Check binary size
+        run: |
+          size=$(wc -c < target/release/rustlock)
+          echo "Binary size (${{ matrix.features }}): $size bytes"
+          if [ "${{ matrix.features }}" = "no-default-features" ] && [ $size -gt 3000000 ]; then
+            echo "❌ Binary size exceeds 3MB threshold for no-networking build"
+            exit 1
+          elif [ "${{ matrix.features }}" = "default" ] && [ $size -gt 5000000 ]; then
+            echo "❌ Binary size exceeds 5MB threshold for networking build"
+            exit 1
+          fi
+          echo "✅ Binary size within limits"
+
+  build-arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: "default"
+            args: ""
+          - features: "no-default-features"
+            args: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          pacman -Sy --noconfirm \
+            base-devel \
+            llvm clang pkgconf \
+            glib2 cairo pango atk gdk-pixbuf2 \
+            pam dbus \
+            wayland libxkbcommon
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build (${{ matrix.features }})
+        run: cargo build --verbose ${{ matrix.args }}
+      - name: Run tests
+        run: cargo test --verbose ${{ matrix.args }}
+      - name: Build release for size check
+        run: cargo build --release ${{ matrix.args }}
+      - name: Check binary size
+        run: |
+          size=$(wc -c < target/release/rustlock)
+          echo "Binary size (${{ matrix.features }}): $size bytes"
+          if [ "${{ matrix.features }}" = "no-default-features" ] && [ $size -gt 3000000 ]; then
+            echo "❌ Binary size exceeds 3MB threshold for no-networking build"
+            exit 1
+          elif [ "${{ matrix.features }}" = "default" ] && [ $size -gt 5000000 ]; then
+            echo "❌ Binary size exceeds 5MB threshold for networking build"
+            exit 1
+          fi
+          echo "✅ Binary size within limits"
+
+  build-opensuse:
+    runs-on: ubuntu-latest
+    container: opensuse/tumbleweed:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: "default"
+            args: ""
+          - features: "no-default-features"
+            args: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          zypper install -y \
+            curl \
+            llvm clang-devel \
+            pkgconfig \
+            glib2-devel cairo-devel pango-devel atk-devel \
+            gdk-pixbuf-devel pam-devel dbus-1-devel \
+            wayland-devel libxkbcommon-devel
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build (${{ matrix.features }})
+        run: cargo build --verbose ${{ matrix.args }}
+      - name: Run tests
+        run: cargo test --verbose ${{ matrix.args }}
+      - name: Build release for size check
+        run: cargo build --release ${{ matrix.args }}
+      - name: Check binary size
+        run: |
+          size=$(wc -c < target/release/rustlock)
+          echo "Binary size (${{ matrix.features }}): $size bytes"
+          if [ "${{ matrix.features }}" = "no-default-features" ] && [ $size -gt 3000000 ]; then
+            echo "❌ Binary size exceeds 3MB threshold for no-networking build"
+            exit 1
+          elif [ "${{ matrix.features }}" = "default" ] && [ $size -gt 5000000 ]; then
+            echo "❌ Binary size exceeds 5MB threshold for networking build"
+            exit 1
+          fi
+          echo "✅ Binary size within limits"

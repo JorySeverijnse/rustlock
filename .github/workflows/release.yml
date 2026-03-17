@@ -4,126 +4,85 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build-ubuntu:
+  release-build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - variant: "default"
+            args: ""
+            distro: "ubuntu"
+          - variant: "no-networking"
             args: "--no-default-features"
-          - variant: "networking"
-            args: "--features networking"
+            distro: "ubuntu"
+          - variant: "default"
+            args: ""
+            distro: "debian"
+          - variant: "default"
+            args: ""
+            distro: "fedora"
+          - variant: "default"
+            args: ""
+            distro: "arch"
+    container: ${{ matrix.distro == 'ubuntu' && 'ubuntu:latest' || matrix.distro == 'debian' && 'debian:stable-slim' || matrix.distro == 'fedora' && 'fedora:latest' || 'archlinux:latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
+      - name: Install system dependencies (Ubuntu/Debian)
+        if: matrix.distro == 'ubuntu' || matrix.distro == 'debian'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get update
+          apt-get install -y \
+            curl \
             llvm clang libclang-dev \
             pkg-config \
             libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
-            libpam0g-dev \
+            libgdk-pixbuf-2.0-dev libpam0g-dev libdbus-1-dev \
             libwayland-dev libxkbcommon-dev
 
-      - name: Build ${{ matrix.variant }}
+      - name: Install system dependencies (Fedora)
+        if: matrix.distro == 'fedora'
+        run: |
+          dnf install -y \
+            curl \
+            llvm clang clang-devel \
+            pkgconfig \
+            glib2-devel cairo-devel cairo-gobject-devel pango-devel atk-devel \
+            gdk-pixbuf2-devel pam-devel dbus-devel \
+            wayland-devel libxkbcommon-devel
+
+      - name: Install system dependencies (Arch)
+        if: matrix.distro == 'arch'
+        run: |
+          pacman -Sy --noconfirm \
+            base-devel \
+            llvm clang pkgconf \
+            glib2 cairo pango atk gdk-pixbuf2 \
+            pam dbus \
+            wayland libxkbcommon
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build ${{ matrix.variant }} (${{ matrix.distro }})
         run: cargo build --release ${{ matrix.args }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rustlock-${{ matrix.variant }}-ubuntu
-          path: target/release/rustlock
-
-  build-debian:
-    runs-on: ubuntu-latest
-    container: debian:stable-slim
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          apt-get update
-          apt-get install -y \
-            llvm clang libclang-dev \
-            pkg-config \
-            libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
-            libpam0g-dev \
-            libwayland-dev libxkbcommon-dev \
-            cargo rust
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustlock-default-debian
-          path: target/release/rustlock
-
-  build-fedora:
-    runs-on: ubuntu-latest
-    container: fedora:latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          dnf install -y \
-            llvm clang libclang-devel \
-            pkg-config \
-            glib2-devel cairo-devel pango-devel atk-devel \
-            pam-devel \
-            wayland-devel libxkbcommon-devel \
-            rust cargo
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustlock-default-fedora
-          path: target/release/rustlock
-
-  build-arch:
-    runs-on: ubuntu-latest
-    container: archlinux:latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          pacman -Sy --noconfirm \
-            llvm clang pkgconf \
-            glib2 cairo pango atk \
-            pam \
-            wayland libxkbcommon \
-            rust cargo
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustlock-default-arch
+          name: rustlock-${{ matrix.variant }}-${{ matrix.distro }}
           path: target/release/rustlock
 
   release:
     runs-on: ubuntu-latest
-    needs: [build-ubuntu, build-debian, build-fedora, build-arch]
+    needs: [release-build]
     permissions:
       contents: write
     steps:
@@ -134,6 +93,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts/
 
       - name: Determine tag
         id: tag
@@ -148,7 +110,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
           files: |
             artifacts/rustlock-default-ubuntu/rustlock
-            artifacts/rustlock-networking-ubuntu/rustlock
+            artifacts/rustlock-no-networking-ubuntu/rustlock
             artifacts/rustlock-default-debian/rustlock
             artifacts/rustlock-default-fedora/rustlock
             artifacts/rustlock-default-arch/rustlock

@@ -1,0 +1,51 @@
+name: Code Quality
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            llvm clang libclang-dev \
+            pkg-config \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev libatk1.0-dev \
+            libpam0g-dev libdbus-1-dev \
+            libwayland-dev libxkbcommon-dev
+      
+      - name: Install Rust with tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Check formatting
+        run: cargo fmt -- --check
+      
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+      
+      - name: Install cargo-deny
+        run: cargo install cargo-deny 
+      
+      - name: Check dependencies with cargo-deny
+        run: cargo deny check
+      
+      - name: Run unit tests
+        run: cargo test --quiet
+      
+      - name: Check documentation
+        run: cargo doc --no-deps --document-private-items

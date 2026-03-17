@@ -1,0 +1,97 @@
+name: Metrics Collection
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday at midnight
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - '.github/workflows/metrics.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  collect-metrics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Install Rust with tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+
+      
+      - name: Generate test coverage
+        run: |
+          cargo install cargo-tarpaulin
+          cargo tarpaulin --out Html --out Lcov --output-dir ./coverage
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./coverage
+          retention-days: 30
+      
+      - name: Count lines of code
+        run: |
+          cargo install tokei
+          tokei --output json > loc.json
+          echo "Lines of code:"
+          tokei --type=Rust
+      
+      - name: Upload LOC metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: loc-metrics
+          path: loc.json
+          retention-days: 30
+      
+      - name: Check compile times
+        run: |
+          echo "=== Compilation Metrics ==="
+          echo "Note: For accurate compile times, run: cargo clean && cargo build --timings"
+          echo ""
+          echo "To optimize compile times:"
+          echo "1. Check for large dependencies with: cargo tree --depth 1"
+          echo "2. Consider feature flag optimization"
+          echo "3. Review workspace structure"
+      
+      - name: Dependency analysis
+        run: |
+          cargo install cargo-depgraph
+          cargo depgraph --all-features --dedup-transitive --format dot > deps.dot
+          echo "Dependency graph generated: deps.dot"
+          echo "Total dependencies: $(cargo tree --depth 0 | wc -l)"
+      
+      - name: Upload dependency graph
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-graph
+          path: deps.dot
+          retention-days: 30
+      
+      - name: Metrics summary
+        run: |
+          echo "=== Build Metrics Summary ==="
+          echo ""
+          echo "📊 Coverage: HTML and Lcov reports generated"
+          echo "📈 LOC: Lines of code counted and saved"
+          echo "🔗 Dependencies: Graph visualization available"
+          echo ""
+          echo "Artifacts available for 30 days:"
+          echo "  - coverage-report/"
+          echo "  - loc-metrics/loc.json"
+          echo "  - dependency-graph/deps.dot"
+          echo ""
+          echo "Next steps:"
+          echo "1. Review coverage reports to identify untested code"
+          echo "2. Monitor LOC growth over time"
+          echo "3. Analyze dependency graph for optimization opportunities"

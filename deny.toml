@@ -1,0 +1,70 @@
+# Cargo-deny configuration for RustLock
+# See: https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Check for security vulnerabilities
+vulnerability = "deny"
+# Check for unmaintained crates
+unmaintained = "warn"
+# Check for unsound crates
+unsound = "deny"
+# Check for yanked crates
+yanked = "deny"
+# Ignore specific advisories
+ignore = [
+    # Add specific advisory IDs to ignore here if needed
+]
+
+# Sources for advisory database
+[advisories.db]
+# Use GitHub advisory database
+github-data = "https://github.com/rustsec/advisory-db"
+# Update frequency (daily)
+update-frequency = "daily"
+
+[bans]
+# Multiple versions of the same crate
+multiple-versions = "allow"
+# Wildcard dependencies (e.g., "1.*")
+wildcards = "deny"
+
+# Skip specific crates from checks
+skip = [
+    # Add crate names to skip here if needed
+]
+
+[licenses]
+# Default license policy
+default = "deny"
+# Allow these licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unlicense",
+    "CC0-1.0",
+    "MPL-2.0",
+    "AGPL-3.0-or-later",  # Our own license
+]
+# Copyleft licenses that require special attention
+copyleft = "warn"
+# Unknown licenses
+unlicensed = "deny"
+
+# Skip specific crates from license checks
+skip = [
+    # Add crate names to skip here if needed
+]
+
+[sources]
+# Allow only these registries
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Deny git repositories (except for specific cases)
+allow-git = []
+
+[metadata]
+# Minimum severity level to display
+severity-threshold = "low"

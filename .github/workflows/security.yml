@@ -1,0 +1,68 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight
+  workflow_dispatch:      # Manual trigger
+  push:
+    branches: [main, master]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/security.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install security tools
+        run: |
+          cargo install cargo-audit 
+          cargo install cargo-deny 
+      
+      - name: Run cargo audit
+        run: cargo audit
+      
+      - name: Run cargo deny (advisories only)
+        run: cargo deny check advisories
+      
+      - name: Run cargo deny (full check)
+        run: cargo deny check
+      
+      - name: Generate Software Bill of Materials (SBOM)
+        run: |
+          cargo install cargo-cyclonedx 
+          cargo cyclonedx --format json --output bom.json
+      
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: bom.json
+          retention-days: 90
+      
+      - name: Check for outdated dependencies
+        run: |
+          cargo install cargo-outdated 
+          cargo outdated --exit-code 1 || echo "Some dependencies are outdated"
+      
+      - name: Security summary
+        run: |
+          echo "=== Security Scan Complete ==="
+          echo "✅ cargo audit - Vulnerability scanning"
+          echo "✅ cargo deny - Advisory and license checking"
+          echo "✅ SBOM generated - Software Bill of Materials"
+          echo "✅ Outdated dependencies checked"
+          echo ""
+          echo "Next scheduled scan: Weekly (Sunday 00:00 UTC)"
+          echo "Manual trigger: Click 'Run workflow' in GitHub Actions"
