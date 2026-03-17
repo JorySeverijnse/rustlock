@@ -45,7 +45,7 @@ jobs:
           cargo install tokei
           tokei --output json > loc.json
           echo "Lines of code:"
-          tokei --type=Rust
+          tokei --types=Rust
       
       - name: Upload LOC metrics
         uses: actions/upload-artifact@v4
