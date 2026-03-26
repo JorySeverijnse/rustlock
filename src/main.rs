@@ -104,6 +104,7 @@ impl log::Log for DualLogger {
 }
 
 struct WaylandLock {
+    conn: Connection,
     loop_handle: LoopHandle<'static, Self>,
     lock_manager: Arc<Mutex<LockManager>>,
     config: Config,
@@ -123,7 +124,6 @@ struct WaylandLock {
     captured_backgrounds: Vec<Option<cairo::ImageSurface>>,
     pending_screenshots: usize,
     exit: bool,
-    unlocking: bool,
     screenshot_manager: Option<ScreenshotManager>,
     grace_until: Option<Instant>,
     system_manager: Arc<SystemManager>,
@@ -140,8 +140,9 @@ impl WaylandLock {
             log::info!("✅ Authentication successful - unlocking session");
             if let Some(session_lock) = &self.session_lock {
                 session_lock.unlock();
-                self.unlocking = true;
-                log::debug!("Unlock requested - waiting for compositor finished event");
+                let _ = self.conn.flush();
+                self.exit = true;
+                log::debug!("Unlock requested - exiting");
             } else {
                 log::error!("No session_lock available to unlock!");
                 self.exit = true;
@@ -617,6 +618,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pool = SlotPool::new(1, &shm_state)?;
 
     let mut state = WaylandLock {
+        conn: conn.clone(),
         loop_handle: event_loop.handle(),
         lock_manager: lock_manager.clone(),
         config: config.clone(),
@@ -636,7 +638,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         captured_backgrounds: Vec::new(),
         pending_screenshots: 0,
         exit: false,
-        unlocking: false,
         screenshot_manager: ScreenshotManager::new(&globals, &qh).ok(),
         grace_until: None,
         system_manager: system_manager.clone(),
@@ -727,9 +728,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        if state.unlocking {
-            return calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(100));
-        }
 
         let mut status = state.system_manager.get_status();
         status.keyboard_layout = Some(state.current_layout.to_string());
