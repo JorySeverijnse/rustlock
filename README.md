@@ -192,4 +192,4 @@ The binary will be available at `target/release/rustlock`.
 
 ## 📄 License
 
-AGPL v3+
+GPL v3
