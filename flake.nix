@@ -6,9 +6,31 @@
   };
 
   outputs = { self, nixpkgs }: let
-    system = builtins.currentSystem;
+    system = "x86_64-linux";
     pkgs = import nixpkgs { inherit system; };
   in {
-    packages.${system}.rustlock = pkgs.callPackage ./default.nix {};
+    packages.${system}.default = pkgs.rustPlatform.buildRustPackage {
+      pname = "rustlock";
+      version = "0.1.0";
+      src = ./.;
+      cargoLock = { lockFile = ./Cargo.lock; };
+
+      buildInputs = with pkgs; [
+        cairo
+        pam
+        gdk-pixbuf
+        librsvg
+        pango
+        libxkbcommon
+        dbus
+      ];
+
+      nativeBuildInputs = [
+        pkgs.pkg-config
+        pkgs.rustPlatform.bindgenHook
+        pkgs.rustfmt
+        pkgs.clippy
+      ];
+    };
   };
 }
