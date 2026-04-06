@@ -197,6 +197,21 @@ impl Renderer {
 
         // Draw background
         if let Some(ref background) = self.background {
+            self.context.save().expect("Failed to save context");
+            let bg_width = background.width() as f64;
+            let bg_height = background.height() as f64;
+            let scale_x = self.width as f64 / bg_width;
+            let scale_y = self.height as f64 / bg_height;
+
+            // Preserve aspect ratio by using the larger scale factor (zoom to fill)
+            let scale = scale_x.max(scale_y);
+            
+            // Calculate offsets to center the image
+            let offset_x = (self.width as f64 - bg_width * scale) / 2.0;
+            let offset_y = (self.height as f64 - bg_height * scale) / 2.0;
+
+            self.context.translate(offset_x, offset_y);
+            self.context.scale(scale, scale);
             self.context.new_path();
             self.context
                 .set_source_surface(background, 0.0, 0.0)
@@ -204,6 +219,7 @@ impl Renderer {
             self.context
                 .paint_with_alpha(self.fade_alpha)
                 .expect("Failed to paint");
+            self.context.restore().expect("Failed to restore context");
         }
 
         if self.config.indicator {
