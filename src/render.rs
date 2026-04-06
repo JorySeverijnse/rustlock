@@ -234,7 +234,7 @@ impl Renderer {
             self.draw_keyboard_layout();
         }
 
-        if !self.password_display.is_empty() {
+        if !self.password_display.is_empty() && self.config.show_masked_password {
             self.draw_password_display();
         }
 

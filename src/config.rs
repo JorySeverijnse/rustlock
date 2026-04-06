@@ -57,6 +57,9 @@ pub struct Config {
     #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
     pub show_caps_lock_text: bool,
 
+    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    pub show_masked_password: bool,
+
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
     pub line_color: (f64, f64, f64, f64),
 
@@ -204,6 +207,7 @@ impl Config {
                     merge_bool(&mut config.show_bluetooth, "show_bluetooth");
                     merge_bool(&mut config.show_album_art, "show_album_art");
                     merge_bool(&mut config.show_keyboard_layout, "show_keyboard_layout");
+                    merge_bool(&mut config.show_masked_password, "show_masked_password");
 
                     if !is_cli("image") {
                         if let Some(toml::Value::String(s)) = table.get("image") {
