@@ -94,6 +94,9 @@ pub struct Config {
     #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_caps_lock_text: bool,
 
+    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    pub show_masked_password: bool,
+
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
     #[serde(
         deserialize_with = "util::deserialize_hex_color",
