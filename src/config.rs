@@ -22,48 +22,97 @@ pub struct Config {
     pub indicator_thickness: u32,
 
     #[arg(long, value_parser = util::parse_blur_effect)]
+    #[serde(
+        deserialize_with = "util::deserialize_blur_effect",
+        serialize_with = "util::serialize_blur_effect",
+        default
+    )]
     pub effect_blur: Option<(u32, u32)>,
 
     #[arg(long, value_parser = util::parse_vignette_effect)]
+    #[serde(
+        deserialize_with = "util::deserialize_vignette_effect",
+        serialize_with = "util::serialize_vignette_effect",
+        default
+    )]
     pub effect_vignette: Option<(f32, f32)>,
 
     #[arg(long)]
+    #[serde(default)]
     pub effect_pixelate: Option<u32>,
 
     #[arg(long)]
+    #[serde(default)]
     pub effect_swirl: Option<f32>,
 
     #[arg(long)]
+    #[serde(default)]
     pub effect_melting: Option<f32>,
 
     #[arg(long, default_value = "785412", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub ring_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "4EAC41", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub key_hl_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "4EAC41", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub caps_lock_key_hl_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "DB3300", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub caps_lock_bs_hl_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "E5A445", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub caps_lock_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "E5A445", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub caps_lock_text_color: (f64, f64, f64, f64),
 
     #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
     pub show_caps_lock_text: bool,
 
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub line_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "00000088", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub inside_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
+    #[serde(
+        deserialize_with = "util::deserialize_hex_color",
+        serialize_with = "util::serialize_hex_color"
+    )]
     pub separator_color: (f64, f64, f64, f64),
 
     #[arg(long, default_value = "2")]
@@ -104,31 +153,40 @@ pub struct Config {
     pub show_keyboard_layout: bool,
 
     #[arg(long)]
+    #[serde(default)]
     pub image: Option<PathBuf>,
 
     #[arg(long)]
+    #[serde(default)]
     pub wifi_icon: Option<String>,
 
     #[arg(long)]
+    #[serde(default)]
     pub bluetooth_icon: Option<String>,
 
     #[arg(long)]
+    #[serde(default)]
     pub battery_icon: Option<String>,
 
     #[arg(long)]
+    #[serde(default)]
     pub media_prev_icon: Option<String>,
 
     #[arg(long)]
+    #[serde(default)]
     pub media_stop_icon: Option<String>,
 
     #[arg(long)]
+    #[serde(default)]
     pub media_play_icon: Option<String>,
 
     #[arg(long)]
+    #[serde(default)]
     pub media_next_icon: Option<String>,
 
     /// Apply a pre-defined theme preset
     #[arg(long)]
+    #[serde(default)]
     pub theme: Option<String>,
 }
 
@@ -153,103 +211,24 @@ impl Config {
 
         if config_path.exists() {
             if let Ok(file_content) = std::fs::read_to_string(&config_path) {
-                if let Ok(table) = toml::from_str::<toml::Table>(&file_content) {
+                if let Ok(file_table) = toml::from_str::<toml::Table>(&file_content) {
                     log::debug!("Loaded configuration from {:?}", config_path);
 
-                    let merge_bool = |val: &mut bool, key: &str| {
-                        if !is_cli(key) {
-                            if let Some(toml::Value::Boolean(b)) = table.get(key) {
-                                *val = *b;
+                    // Convert current config to a TOML table to facilitate merging
+                    if let Ok(mut config_table) = toml::Value::try_from(config.clone()) {
+                        if let Some(config_table) = config_table.as_table_mut() {
+                            for (key, value) in file_table {
+                                if !is_cli(&key) {
+                                    config_table.insert(key, value);
+                                }
                             }
-                        }
-                    };
 
-                    let merge_u32 = |val: &mut u32, key: &str| {
-                        if !is_cli(key) {
-                            if let Some(toml::Value::Integer(i)) = table.get(key) {
-                                *val = *i as u32;
+                            // Convert back to Config struct
+                            if let Ok(new_config) =
+                                toml::Value::Table(config_table.clone()).try_into::<Config>()
+                            {
+                                config = new_config;
                             }
-                        }
-                    };
-
-                    let merge_f32 = |val: &mut f32, key: &str| {
-                        if !is_cli(key) {
-                            if let Some(toml::Value::Float(f)) = table.get(key) {
-                                *val = *f as f32;
-                            } else if let Some(toml::Value::Integer(i)) = table.get(key) {
-                                *val = *i as f32;
-                            }
-                        }
-                    };
-
-                    let merge_string = |val: &mut String, key: &str| {
-                        if !is_cli(key) {
-                            if let Some(toml::Value::String(s)) = table.get(key) {
-                                *val = s.clone();
-                            }
-                        }
-                    };
-
-                    merge_bool(&mut config.screenshots, "screenshots");
-                    merge_bool(&mut config.clock, "clock");
-                    merge_bool(&mut config.indicator, "indicator");
-                    merge_u32(&mut config.indicator_radius, "indicator_radius");
-                    merge_u32(&mut config.indicator_thickness, "indicator_thickness");
-                    merge_f32(&mut config.grace, "grace");
-                    merge_f32(&mut config.fade_in, "fade_in");
-                    merge_string(&mut config.pam_service, "pam_service");
-                    merge_bool(&mut config.show_media, "show_media");
-                    merge_bool(&mut config.show_battery, "show_battery");
-                    merge_bool(&mut config.show_network, "show_network");
-                    merge_bool(&mut config.show_bluetooth, "show_bluetooth");
-                    merge_bool(&mut config.show_album_art, "show_album_art");
-                    merge_bool(&mut config.show_keyboard_layout, "show_keyboard_layout");
-
-                    if !is_cli("image") {
-                        if let Some(toml::Value::String(s)) = table.get("image") {
-                            config.image = Some(std::path::PathBuf::from(s));
-                        }
-                    }
-
-                    if !is_cli("wifi_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("wifi_icon") {
-                            config.wifi_icon = Some(s.clone());
-                        }
-                    }
-
-                    if !is_cli("bluetooth_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("bluetooth_icon") {
-                            config.bluetooth_icon = Some(s.clone());
-                        }
-                    }
-
-                    if !is_cli("battery_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("battery_icon") {
-                            config.battery_icon = Some(s.clone());
-                        }
-                    }
-
-                    if !is_cli("media_prev_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("media_prev_icon") {
-                            config.media_prev_icon = Some(s.clone());
-                        }
-                    }
-
-                    if !is_cli("media_stop_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("media_stop_icon") {
-                            config.media_stop_icon = Some(s.clone());
-                        }
-                    }
-
-                    if !is_cli("media_play_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("media_play_icon") {
-                            config.media_play_icon = Some(s.clone());
-                        }
-                    }
-
-                    if !is_cli("media_next_icon") {
-                        if let Some(toml::Value::String(s)) = table.get("media_next_icon") {
-                            config.media_next_icon = Some(s.clone());
                         }
                     }
                 }
