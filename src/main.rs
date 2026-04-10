@@ -435,7 +435,7 @@ impl SeatHandler for WaylandLock {
     ) {
         if capability == smithay_client_toolkit::seat::Capability::Keyboard {
             let _ = self.seat_state.get_keyboard_with_repeat(
-                &qh,
+                qh,
                 &seat,
                 None,
                 self.loop_handle.clone(),
@@ -445,7 +445,7 @@ impl SeatHandler for WaylandLock {
             );
         }
         if capability == smithay_client_toolkit::seat::Capability::Pointer {
-            let _ = self.seat_state.get_pointer(&qh, &seat);
+            let _ = self.seat_state.get_pointer(qh, &seat);
         }
     }
     fn remove_capability(
