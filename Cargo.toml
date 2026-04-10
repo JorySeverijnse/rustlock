@@ -25,7 +25,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 whoami = "1.6"
 zbus = { version = "5.14", default-features = false, features = ["tokio"] }
 mpris = "2.0"
-upower_dbus = "0.3"
 tokio = { version = "1.51", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
 num-traits = { version = "0.2" }
 rand = { version = "0.8" }

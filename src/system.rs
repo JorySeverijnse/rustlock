@@ -71,12 +71,22 @@ impl SystemManager {
                             let mut new_status = SystemStatus::default();
 
                             if let Some(ref c) = conn {
-                                // 1. Battery status
-                                if let Ok(proxy) = upower_dbus::UPowerProxy::new(c).await {
-                                    if let Ok(display_device) = proxy.get_display_device().await {
-                                        new_status.battery_percent = display_device.percentage().await.ok();
-                                        if let Ok(state) = display_device.state().await {
-                                            new_status.is_charging = format!("{:?}", state).contains("Charging");
+                                if let Ok(reply) = c.call_method(
+                                    Some("org.freedesktop.UPower"),
+                                    "/org/freedesktop/UPower/devices/DisplayDevice",
+                                    Some("org.freedesktop.DBus.Properties"),
+                                    "GetAll",
+                                    &("org.freedesktop.UPower.Device"),
+                                ).await {
+                                    use std::collections::HashMap;
+                                    if let Ok(props) = reply.body().deserialize::<HashMap<String, zbus::zvariant::OwnedValue>>() {
+                                        if let Some(v) = props.get("Percentage") {
+                                            new_status.battery_percent = v.downcast_ref::<f64>().ok();
+                                        }
+                                        if let Some(v) = props.get("State") {
+                                            if let Ok(state) = v.downcast_ref::<u32>() {
+                                                new_status.is_charging = state == 1;
+                                            }
                                         }
                                     }
                                 }
@@ -128,54 +138,68 @@ impl SystemManager {
                                     "GetDevices",
                                     &(),
                                 ).await {
-                                    let devices: Vec<zbus::zvariant::OwnedObjectPath> = reply.body().unwrap();
-                                    for dev_path in devices {
-                                        if let Ok(dev_type_reply) = c.call_method(
-                                            Some("org.freedesktop.NetworkManager"),
-                                            &dev_path,
-                                            Some("org.freedesktop.DBus.Properties"),
-                                            "Get",
-                                            &("org.freedesktop.NetworkManager.Device", "DeviceType"),
-                                        ).await {
-                                            let dev_type: u32 = dev_type_reply.body::<zbus::zvariant::Value>().unwrap().downcast().unwrap();
-                                            if dev_type == 2 { // WiFi
-                                                if let Ok(active_ap_reply) = c.call_method(
-                                                    Some("org.freedesktop.NetworkManager"),
-                                                    &dev_path,
-                                                    Some("org.freedesktop.DBus.Properties"),
-                                                    "Get",
-                                                    &("org.freedesktop.NetworkManager.Device.Wireless", "ActiveAccessPoint"),
-                                                ).await {
-                                                    let ap_path: zbus::zvariant::OwnedObjectPath = active_ap_reply.body::<zbus::zvariant::Value>().unwrap().downcast().unwrap();
-                                                    if ap_path.as_str() != "/" {
-                                                        if let Ok(ssid_reply) = c.call_method(
-                                                            Some("org.freedesktop.NetworkManager"),
-                                                            &ap_path,
-                                                            Some("org.freedesktop.DBus.Properties"),
-                                                            "Get",
-                                                            &("org.freedesktop.NetworkManager.AccessPoint", "Ssid"),
-                                                        ).await {
-                                                            let ssid_bytes: Vec<u8> = ssid_reply.body::<zbus::zvariant::Value>().unwrap().downcast().unwrap();
-                                                            new_status.wifi_ssid = Some(String::from_utf8_lossy(&ssid_bytes).to_string());
-                                                        }
-                                                        if let Ok(strength_reply) = c.call_method(
-                                                            Some("org.freedesktop.NetworkManager"),
-                                                            &ap_path,
-                                                            Some("org.freedesktop.DBus.Properties"),
-                                                            "Get",
-                                                            &("org.freedesktop.NetworkManager.AccessPoint", "Strength"),
-                                                        ).await {
-                                                            new_status.wifi_strength = Some(strength_reply.body::<zbus::zvariant::Value>().unwrap().downcast().unwrap());
+                                    if let Ok(devices) = reply.body().deserialize::<Vec<zbus::zvariant::OwnedObjectPath>>() {
+                                        for dev_path in devices {
+                                            if let Ok(dev_type_reply) = c.call_method(
+                                                Some("org.freedesktop.NetworkManager"),
+                                                &dev_path,
+                                                Some("org.freedesktop.DBus.Properties"),
+                                                "Get",
+                                                &("org.freedesktop.NetworkManager.Device", "DeviceType"),
+                                            ).await {
+                                                if let Ok(val) = dev_type_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
+                                                    if let Ok(dev_type) = val.downcast_ref::<u32>() {
+                                                        if dev_type == 2 { // WiFi
+                                                            if let Ok(active_ap_reply) = c.call_method(
+                                                                Some("org.freedesktop.NetworkManager"),
+                                                                &dev_path,
+                                                                Some("org.freedesktop.DBus.Properties"),
+                                                                "Get",
+                                                                &("org.freedesktop.NetworkManager.Device.Wireless", "ActiveAccessPoint"),
+                                                            ).await {
+                                                                if let Ok(ap_val) = active_ap_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
+                                                                    if let Ok(ap_path) = ap_val.downcast_ref::<zbus::zvariant::ObjectPath>() {
+                                                                        if ap_path.as_str() != "/" {
+                                                                                if let Ok(ssid_reply) = c.call_method(
+                                                                                    Some("org.freedesktop.NetworkManager"),
+                                                                                    &ap_path,
+                                                                                    Some("org.freedesktop.DBus.Properties"),
+                                                                                    "Get",
+                                                                                    &("org.freedesktop.NetworkManager.AccessPoint", "Ssid"),
+                                                                                ).await {
+                                                                                    if let Ok(ssid_val) = ssid_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
+                                                                                        let ssid_bytes: Result<Vec<u8>, _> = ssid_val.try_into();
+                                                                                        if let Ok(ssid_bytes) = ssid_bytes {
+                                                                                            new_status.wifi_ssid = Some(String::from_utf8_lossy(&ssid_bytes).to_string());
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            if let Ok(strength_reply) = c.call_method(
+                                                                                Some("org.freedesktop.NetworkManager"),
+                                                                                &ap_path,
+                                                                                Some("org.freedesktop.DBus.Properties"),
+                                                                                "Get",
+                                                                                &("org.freedesktop.NetworkManager.AccessPoint", "Strength"),
+                                                                            ).await {
+                                                                                if let Ok(strength_val) = strength_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
+                                                                                    if let Ok(strength) = strength_val.downcast_ref::<u8>() {
+                                                                                        new_status.wifi_strength = Some(strength);
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            break;
                                                         }
                                                     }
                                                 }
-                                                break;
                                             }
                                         }
                                     }
                                 }
 
-                                // 4. Bluetooth status (BlueZ)
                                 if let Ok(objects_reply) = c.call_method(
                                     Some("org.bluez"),
                                     "/",
@@ -185,15 +209,18 @@ impl SystemManager {
                                 ).await {
                                     use std::collections::HashMap;
                                     type ManagedObjects = HashMap<zbus::zvariant::OwnedObjectPath, HashMap<String, HashMap<String, zbus::zvariant::OwnedValue>>>;
-                                    if let Ok(objects) = objects_reply.body::<ManagedObjects>() {
+                                    if let Ok(objects) = objects_reply.body().deserialize::<ManagedObjects>() {
                                         for (_path, interfaces) in objects {
                                             if let Some(device) = interfaces.get("org.bluez.Device1") {
                                                 if let Some(connected) = device.get("Connected") {
-                                                    if connected.downcast_ref::<bool>().copied().unwrap_or(false) {
-                                                        new_status.bluetooth_connected = true;
-                                                        if let Some(name) = device.get("Name") {
-                                                            let name_str: String = name.downcast_ref::<str>().map(|s| s.to_string()).unwrap_or_default();
-                                                            new_status.bluetooth_devices.push(name_str);
+                                                    if let Ok(connected) = connected.downcast_ref::<bool>() {
+                                                        if connected {
+                                                            new_status.bluetooth_connected = true;
+                                                            if let Some(name) = device.get("Name") {
+                                                                if let Ok(name_str) = name.downcast_ref::<String>() {
+                                                                    new_status.bluetooth_devices.push(name_str.clone());
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }
