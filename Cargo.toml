@@ -2,6 +2,7 @@
 name = "rustlock"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 smithay-client-toolkit = { version = "0.19", default-features = false, features = ["calloop", "xkbcommon"] }
@@ -14,26 +15,26 @@ cairo-rs = { version = "0.20", default-features = false, features = ["png"] }
 gdk-pixbuf = { version = "0.20", default-features = false, features = ["v2_40"] }
 gio = { version = "0.20" }
 pangocairo = { version = "0.20" }
-clap = { version = "4.4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
-toml = { version = "1.0", default-features = false, features = ["parse", "display", "serde"] }
+clap = { version = "4.6", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+toml = { version = "1.1", default-features = false, features = ["parse", "display", "serde"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
-zeroize = "1.7"
+zeroize = "1.8"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = ["color", "humantime"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-whoami = "1.0"
-zbus = { version = "3.15", default-features = false, features = ["tokio"] }
+whoami = "1.6"
+zbus = { version = "5.14", default-features = false, features = ["tokio"] }
 mpris = "2.0"
 upower_dbus = "0.3"
-tokio = { version = "1.0", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
+tokio = { version = "1.51", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
 num-traits = { version = "0.2" }
 rand = { version = "0.8" }
-reqwest = { version = "0.11", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
     fastblur = "0.1"
     pam-client = "0.5"
     thiserror = "1.0"
-    bytemuck = "1.14"
+    bytemuck = "1.25"
     calloop = "0.13"
     xkbcommon = "0.7"
     calloop-wayland-source = "0.3"

@@ -4,6 +4,23 @@ ignore = []
 [bans]
 multiple-versions = "allow"
 
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unlicense",
+    "0BSD",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "GPL-3.0-or-later",
+    "Apache-2.0 WITH LLVM-exception",
+    "CDLA-Permissive-2.0",
+]
+
 [sources]
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
