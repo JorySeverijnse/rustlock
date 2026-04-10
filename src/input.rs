@@ -78,9 +78,8 @@ impl InputHandler {
         InputAction::None
     }
 
-    /// Get the current password (for display purposes only - returns masked version)
-    pub fn get_display_password(&self) -> String {
-        self.password_buffer.chars().map(|_| '•').collect()
+    pub fn password_length(&self) -> usize {
+        self.password_buffer.len()
     }
 
     /// Set wrong password feedback timer

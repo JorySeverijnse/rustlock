@@ -120,7 +120,7 @@ impl LockedSurface {
         }
 
         self.renderer
-            .set_password_display(self.input_handler.get_display_password());
+            .set_password_display(self.input_handler.password_length());
         self.renderer.render();
     }
 

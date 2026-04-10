@@ -193,9 +193,8 @@ impl Renderer {
         self.cleared_feedback_start = Some(Instant::now());
     }
 
-    /// Set the password display string (masked)
-    pub fn set_password_display(&mut self, password: String) {
-        self.password_display = password;
+    pub fn set_password_display(&mut self, length: usize) {
+        self.password_display = ".".repeat(length);
     }
 
     /// Render the current frame
@@ -396,13 +395,28 @@ impl Renderer {
         let center_x = self.width as f64 / 2.0;
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
+        let thickness = self.config.indicator_thickness as f64;
+        
         self.context.new_path();
-        self.context.set_font_size(32.0);
         self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
-        let te = self.context.text_extents(&self.password_display).unwrap();
-        self.context
-            .move_to(center_x - te.width() / 2.0, center_y + radius / 1.1);
-        self.context.show_text(&self.password_display).unwrap();
+
+        let count = self.password_display.len();
+        if count == 0 {
+            return;
+        }
+
+        let dot_radius = radius - thickness - 10.0;
+        let angle_step = (360.0 / 24.0_f64).to_radians();
+        
+        for i in 0..count {
+            let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
+            let x = center_x + dot_radius * angle.cos();
+            let y = center_y + dot_radius * angle.sin();
+            
+            self.context.new_path();
+            self.context.arc(x, y, 4.0, 0.0, 2.0 * std::f64::consts::PI);
+            self.context.fill().unwrap();
+        }
     }
 
     fn draw_caps_lock_indicator(&self) {
@@ -537,8 +551,9 @@ impl Renderer {
                 .set_source_rgba(1.0, 1.0, 1.0, intensity * self.fade_alpha);
             let text = "CLEARED";
             let te = self.context.text_extents(text).unwrap();
+
             self.context
-                .move_to(center_x - te.width() / 2.0, center_y + te.height() / 2.0);
+                .move_to(center_x - te.width() / 2.0, center_y - radius - 20.0);
             self.context.show_text(text).unwrap();
         }
     }
