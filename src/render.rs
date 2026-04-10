@@ -34,6 +34,7 @@ pub struct Renderer {
     media_stop_icon_surface: Option<ImageSurface>,
     media_play_icon_surface: Option<ImageSurface>,
     media_next_icon_surface: Option<ImageSurface>,
+    pub media_rects: Vec<(String, f64, f64, f64, f64)>,
 }
 
 impl Renderer {
@@ -73,6 +74,7 @@ impl Renderer {
             media_stop_icon_surface: None,
             media_play_icon_surface: None,
             media_next_icon_surface: None,
+            media_rects: Vec::new(),
         };
 
         renderer.load_icons();
@@ -80,69 +82,374 @@ impl Renderer {
     }
 
     fn load_icons(&mut self) {
-        if let Some(ref path) = self.config.wifi_icon {
-            self.wifi_icon_surface = self.load_icon(path);
+        log::info!("Attempting to load status icons...");
+        let wifi_names = [
+            "network-wireless-signal-excellent-symbolic",
+            "network-wireless-signal-excellent",
+            "network-wireless-symbolic",
+            "network-wireless",
+        ];
+        let wifi_path = self
+            .config
+            .wifi_icon
+            .clone()
+            .or_else(|| {
+                for name in &wifi_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+
+        if !wifi_path.is_empty() {
+            log::info!("Resolved WiFi icon path: {}", wifi_path);
+            self.wifi_icon_surface = self.load_icon(&wifi_path);
+        } else {
+            log::warn!("WiFi icon not found in system themes.");
         }
-        if let Some(ref path) = self.config.bluetooth_icon {
-            self.bluetooth_icon_surface = self.load_icon(path);
+
+        let bt_names = [
+            "bluetooth-active-symbolic",
+            "bluetooth-symbolic",
+            "bluetooth-active",
+            "bluetooth",
+        ];
+        let bt_path = self
+            .config
+            .bluetooth_icon
+            .clone()
+            .or_else(|| {
+                for name in &bt_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+
+        if !bt_path.is_empty() {
+            log::info!("Resolved Bluetooth icon path: {}", bt_path);
+            self.bluetooth_icon_surface = self.load_icon(&bt_path);
+        } else {
+            log::warn!("Bluetooth icon not found in system themes.");
         }
-        if let Some(ref path) = self.config.battery_icon {
-            self.battery_icon_surface = self.load_icon(path);
+
+        let batt_names = [
+            "battery-level-100-symbolic",
+            "battery-full-symbolic",
+            "battery-full",
+            "battery-level-100",
+            "battery",
+            "battery-symbolic",
+        ];
+        let batt_path = self
+            .config
+            .battery_icon
+            .clone()
+            .or_else(|| {
+                for name in &batt_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+
+        if !batt_path.is_empty() {
+            log::info!("Resolved Battery icon path: {}", batt_path);
+            self.battery_icon_surface = self.load_icon(&batt_path);
+        } else {
+            log::warn!("Battery icon not found in system themes.");
         }
-        if let Some(ref path) = self.config.media_prev_icon {
-            self.media_prev_icon_surface = self.load_icon(path);
+
+        let prev_names = [
+            "media-skip-backward-symbolic",
+            "media-skip-backward",
+            "media-playlist-repeat-symbolic",
+        ];
+        let prev_path = self
+            .config
+            .media_prev_icon
+            .clone()
+            .or_else(|| {
+                for name in &prev_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+        if !prev_path.is_empty() {
+            log::debug!("Resolved Media Prev icon path: {}", prev_path);
+            self.media_prev_icon_surface = self.load_icon(&prev_path);
         }
-        if let Some(ref path) = self.config.media_stop_icon {
-            self.media_stop_icon_surface = self.load_icon(path);
+
+        let stop_names = ["media-playback-stop-symbolic", "media-playback-stop"];
+        let stop_path = self
+            .config
+            .media_stop_icon
+            .clone()
+            .or_else(|| {
+                for name in &stop_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+        if !stop_path.is_empty() {
+            log::debug!("Resolved Media Stop icon path: {}", stop_path);
+            self.media_stop_icon_surface = self.load_icon(&stop_path);
         }
-        if let Some(ref path) = self.config.media_play_icon {
-            self.media_play_icon_surface = self.load_icon(path);
+
+        let play_names = ["media-playback-start-symbolic", "media-playback-start"];
+        let play_path = self
+            .config
+            .media_play_icon
+            .clone()
+            .or_else(|| {
+                for name in &play_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+        if !play_path.is_empty() {
+            log::debug!("Resolved Media Play icon path: {}", play_path);
+            self.media_play_icon_surface = self.load_icon(&play_path);
         }
-        if let Some(ref path) = self.config.media_next_icon {
-            self.media_next_icon_surface = self.load_icon(path);
+
+        let next_names = ["media-skip-forward-symbolic", "media-skip-forward"];
+        let next_path = self
+            .config
+            .media_next_icon
+            .clone()
+            .or_else(|| {
+                for name in &next_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+        if !next_path.is_empty() {
+            log::debug!("Resolved Media Next icon path: {}", next_path);
+            self.media_next_icon_surface = self.load_icon(&next_path);
         }
     }
 
-    fn load_icon(&self, identifier: &str) -> Option<ImageSurface> {
-        let path = if identifier.starts_with('/') {
-            std::path::PathBuf::from(identifier)
-        } else {
-            return None;
-        };
+    fn find_system_icon(&self, name: &str) -> Option<String> {
+        let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_default();
+        let mut search_paths = Vec::new();
 
-        if let Ok(pixbuf) = gdk_pixbuf::Pixbuf::from_file(&path) {
-            let w = pixbuf.width();
-            let h = pixbuf.height();
-            let mut surface = ImageSurface::create(Format::ARgb32, w, h).ok()?;
-            {
-                let mut surface_data = surface.data().ok()?;
-                let pix_data = unsafe { pixbuf.pixels() };
-                let n_channels = pixbuf.n_channels();
-                let rowstride = pixbuf.rowstride() as usize;
+        for dir in data_dirs.split(':') {
+            let p = std::path::PathBuf::from(dir).join("icons");
+            if p.exists() {
+                search_paths.push(p);
+            }
+        }
+        let sys_path = std::path::PathBuf::from("/run/current-system/sw/share/icons");
+        if sys_path.exists() {
+            search_paths.push(sys_path);
+        }
+        let usr_path = std::path::PathBuf::from("/usr/share/icons");
+        if usr_path.exists() {
+            search_paths.push(usr_path);
+        }
 
-                for y in 0..h as usize {
-                    for x in 0..w as usize {
-                        let pix_idx = y * rowstride + x * n_channels as usize;
-                        let surf_idx = (y * w as usize + x) * 4;
+        let themes = [
+            "WhiteSur",
+            "WhiteSur-dark",
+            "WhiteSur-light",
+            "Adwaita",
+            "hicolor",
+            "breeze",
+            "Papirus",
+        ];
+        let categories = [
+            "status/symbolic",
+            "actions/symbolic",
+            "devices/symbolic",
+            "status/24",
+            "status/22",
+            "status/16",
+            "status",
+            "actions",
+            "devices",
+            "symbolic/status",
+            "symbolic/actions",
+            "symbolic/devices",
+            "24x24/status",
+            "22x22/status",
+            "16x16/status",
+            "48x48/status",
+        ];
 
-                        if n_channels == 4 {
-                            surface_data[surf_idx] = pix_data[pix_idx + 2];
-                            surface_data[surf_idx + 1] = pix_data[pix_idx + 1];
-                            surface_data[surf_idx + 2] = pix_data[pix_idx];
-                            surface_data[surf_idx + 3] = pix_data[pix_idx + 3];
-                        } else if n_channels == 3 {
-                            surface_data[surf_idx] = pix_data[pix_idx + 2];
-                            surface_data[surf_idx + 1] = pix_data[pix_idx + 1];
-                            surface_data[surf_idx + 2] = pix_data[pix_idx];
-                            surface_data[surf_idx + 3] = 255;
+        for base in &search_paths {
+            for theme in &themes {
+                for cat in &categories {
+                    for ext in [".svg", ".png"] {
+                        let icon_path = base.join(theme).join(cat).join(format!("{}{}", name, ext));
+                        if icon_path.exists() {
+                            log::debug!("Icon found: {:?}", icon_path);
+                            return Some(icon_path.to_string_lossy().into_owned());
                         }
                     }
                 }
             }
-            Some(surface)
-        } else {
-            None
         }
+
+        for base in &search_paths {
+            for theme in &themes {
+                let theme_root = base.join(theme);
+                if !theme_root.exists() {
+                    continue;
+                }
+
+                if let Ok(entries) = std::fs::read_dir(&theme_root) {
+                    for entry in entries.flatten() {
+                        if entry.path().is_dir() {
+                            for ext in [".svg", ".png"] {
+                                let icon_path = entry.path().join(format!("{}{}", name, ext));
+                                if icon_path.exists() {
+                                    log::debug!("Icon found (deep): {:?}", icon_path);
+                                    return Some(icon_path.to_string_lossy().into_owned());
+                                }
+                                if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
+                                    for sub_entry in sub_entries.flatten() {
+                                        if sub_entry.path().is_dir() {
+                                            let icon_path =
+                                                sub_entry.path().join(format!("{}{}", name, ext));
+                                            if icon_path.exists() {
+                                                log::debug!("Icon found (deep 2): {:?}", icon_path);
+                                                return Some(
+                                                    icon_path.to_string_lossy().into_owned(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn load_icon(&self, identifier: &str) -> Option<ImageSurface> {
+        let path = if identifier.starts_with('~') {
+            let home = std::env::var("HOME").unwrap_or_default();
+            std::path::PathBuf::from(identifier.replacen('~', &home, 1))
+        } else {
+            std::path::PathBuf::from(identifier)
+        };
+
+        if !path.exists() {
+            log::warn!("Icon path does not exist: {:?}", path);
+            return None;
+        }
+
+        if path.extension().and_then(|s| s.to_str()) == Some("svg") {
+            match self.load_svg_with_resvg(&path) {
+                Some(surface) => return Some(surface),
+                None => log::warn!("resvg failed to load {:?}, falling back to pixbuf", path),
+            }
+        }
+
+        match gdk_pixbuf::Pixbuf::from_file(&path) {
+            Ok(pixbuf) => {
+                let w = pixbuf.width();
+                let h = pixbuf.height();
+                let mut surface = ImageSurface::create(Format::ARgb32, w, h).ok()?;
+                {
+                    let mut surface_data = surface.data().ok()?;
+                    let pix_data = unsafe { pixbuf.pixels() };
+                    let n_channels = pixbuf.n_channels();
+                    let rowstride = pixbuf.rowstride() as usize;
+
+                    log::debug!(
+                        "Loaded pixbuf from {:?}: {}x{}, {} channels",
+                        path,
+                        w,
+                        h,
+                        n_channels
+                    );
+
+                    for y in 0..h as usize {
+                        for x in 0..w as usize {
+                            let pix_idx = y * rowstride + x * n_channels as usize;
+                            let surf_idx = (y * w as usize + x) * 4;
+
+                            if n_channels == 4 {
+                                surface_data[surf_idx] = pix_data[pix_idx + 2];
+                                surface_data[surf_idx + 1] = pix_data[pix_idx + 1];
+                                surface_data[surf_idx + 2] = pix_data[pix_idx];
+                                surface_data[surf_idx + 3] = pix_data[pix_idx + 3];
+                            } else if n_channels == 3 {
+                                surface_data[surf_idx] = pix_data[pix_idx + 2];
+                                surface_data[surf_idx + 1] = pix_data[pix_idx + 1];
+                                surface_data[surf_idx + 2] = pix_data[pix_idx];
+                                surface_data[surf_idx + 3] = 255;
+                            }
+                        }
+                    }
+                }
+                Some(surface)
+            }
+            Err(e) => {
+                log::error!("Failed to load icon from {:?}: {}", path, e);
+                None
+            }
+        }
+    }
+
+    fn load_svg_with_resvg(&self, path: &std::path::Path) -> Option<ImageSurface> {
+        use resvg::usvg;
+
+        let opt = usvg::Options::default();
+        let svg_data = std::fs::read(path).ok()?;
+        let tree = usvg::Tree::from_data(&svg_data, &opt).ok()?;
+
+        let size = tree.size().to_int_size();
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height())?;
+
+        resvg::render(
+            &tree,
+            resvg::tiny_skia::Transform::default(),
+            &mut pixmap.as_mut(),
+        );
+
+        let mut surface =
+            ImageSurface::create(Format::ARgb32, size.width() as i32, size.height() as i32).ok()?;
+        {
+            let mut surface_data = surface.data().ok()?;
+            let pix_data = pixmap.data();
+
+            for i in (0..pix_data.len()).step_by(4) {
+                let r = pix_data[i];
+                let g = pix_data[i + 1];
+                let b = pix_data[i + 2];
+                let a = pix_data[i + 3];
+
+                surface_data[i] = b;
+                surface_data[i + 1] = g;
+                surface_data[i + 2] = r;
+                surface_data[i + 3] = a;
+            }
+        }
+        Some(surface)
     }
 
     /// Resize the renderer to new dimensions
@@ -199,6 +506,7 @@ impl Renderer {
 
     /// Render the current frame
     pub fn render(&mut self) {
+        self.media_rects.clear();
         // Clear the surface
         self.context.new_path();
         self.context.set_source_rgba(0.0, 0.0, 0.0, 1.0);
@@ -396,7 +704,7 @@ impl Renderer {
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
         let thickness = self.config.indicator_thickness as f64;
-        
+
         self.context.new_path();
         self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
 
@@ -407,12 +715,12 @@ impl Renderer {
 
         let dot_radius = radius - thickness - 10.0;
         let angle_step = (360.0 / 24.0_f64).to_radians();
-        
+
         for i in 0..count {
             let angle = (i as f64 * angle_step) - std::f64::consts::FRAC_PI_2;
             let x = center_x + dot_radius * angle.cos();
             let y = center_y + dot_radius * angle.sin();
-            
+
             self.context.new_path();
             self.context.arc(x, y, 4.0, 0.0, 2.0 * std::f64::consts::PI);
             self.context.fill().unwrap();
@@ -652,13 +960,17 @@ impl Renderer {
 
             let status_text = if self.system_status.media_playing {
                 if let Some(ref icon) = self.media_play_icon_surface {
-                    // Draw play icon instead of text
                     let play_y = start_y + 40.0;
-                    self.draw_icon_at(
-                        center_x - icon.width() as f64 / 2.0,
-                        play_y - icon.height() as f64 / 2.0,
-                        icon,
-                    );
+                    let rx = center_x - icon.width() as f64 / 2.0;
+                    let ry = play_y - icon.height() as f64 / 2.0;
+                    self.draw_icon_at(rx, ry, icon);
+                    self.media_rects.push((
+                        "play".to_string(),
+                        rx,
+                        ry,
+                        icon.width() as f64,
+                        icon.height() as f64,
+                    ));
                     ""
                 } else {
                     "▶ Playing"
@@ -685,7 +997,11 @@ impl Renderer {
             // Previous icon
             if let Some(ref icon) = self.media_prev_icon_surface {
                 let ix = controls_center_x - icon_spacing;
-                self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
+                let rx = ix - icon_size / 2.0;
+                let ry = controls_y - icon_size / 2.0;
+                self.draw_icon_at(rx, ry, icon);
+                self.media_rects
+                    .push(("prev".to_string(), rx, ry, icon_size, icon_size));
             } else {
                 self.context
                     .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
@@ -698,7 +1014,11 @@ impl Renderer {
             // Stop icon
             if let Some(ref icon) = self.media_stop_icon_surface {
                 let ix = controls_center_x;
-                self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
+                let rx = ix - icon_size / 2.0;
+                let ry = controls_y - icon_size / 2.0;
+                self.draw_icon_at(rx, ry, icon);
+                self.media_rects
+                    .push(("stop".to_string(), rx, ry, icon_size, icon_size));
             } else {
                 self.context
                     .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
@@ -710,7 +1030,11 @@ impl Renderer {
             // Next icon
             if let Some(ref icon) = self.media_next_icon_surface {
                 let ix = controls_center_x + icon_spacing;
-                self.draw_icon_at(ix - icon_size / 2.0, controls_y - icon_size / 2.0, icon);
+                let rx = ix - icon_size / 2.0;
+                let ry = controls_y - icon_size / 2.0;
+                self.draw_icon_at(rx, ry, icon);
+                self.media_rects
+                    .push(("next".to_string(), rx, ry, icon_size, icon_size));
             } else {
                 self.context
                     .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.7);
@@ -733,7 +1057,7 @@ impl Renderer {
         if let Some(ref ssid) = self.system_status.wifi_ssid {
             if let Some(ref icon) = self.wifi_icon_surface {
                 self.draw_icon_at(x, y - 15.0, icon);
-                let text_x = x + icon.width() as f64 + 10.0;
+                let text_x = x + 24.0 + 10.0;
                 self.context.new_path();
                 self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
                 self.context.set_font_size(16.0);
@@ -766,7 +1090,7 @@ impl Renderer {
 
             if let Some(ref icon) = self.battery_icon_surface {
                 self.draw_icon_at(x, y - 15.0, icon);
-                let text_x = x + icon.width() as f64 + 10.0;
+                let text_x = x + 24.0 + 10.0;
                 let battery_text = format!("{:.0}%", percent);
                 self.context.new_path();
                 self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
@@ -800,35 +1124,37 @@ impl Renderer {
         let x = margin;
         let y = margin + 50.0;
 
+        let status_text;
+        let is_off;
+
         if self.system_status.bluetooth_connected {
-            if let Some(ref icon) = self.bluetooth_icon_surface {
-                self.draw_icon_at(x, y - 12.0, icon);
-                let text_x = x + icon.width() as f64 + 10.0;
-                let devices = self.system_status.bluetooth_devices.join(", ");
-                self.context.new_path();
-                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
-                self.context.set_font_size(14.0);
-                self.context.move_to(text_x, y);
-                self.context.show_text(&devices).unwrap();
-            } else {
-                let text = format!(
-                    "🔵 {} device(s)",
-                    self.system_status.bluetooth_devices.len()
-                );
-                self.context.new_path();
-                self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
-                self.context.set_font_size(14.0);
-                self.context.move_to(x, y);
-                self.context.show_text(&text).unwrap();
-            }
+            status_text = self.system_status.bluetooth_devices.join(", ");
+            is_off = false;
         } else {
-            let text = "🔴 Bluetooth off";
+            status_text = "Bluetooth off".to_string();
+            is_off = true;
+        }
+
+        let alpha_mult = if is_off { 0.5 } else { 1.0 };
+
+        if let Some(ref icon) = self.bluetooth_icon_surface {
+            self.draw_icon_at_with_alpha(x, y - 12.0, icon, alpha_mult);
+            let text_x = x + 24.0 + 10.0;
             self.context.new_path();
             self.context
-                .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * 0.5);
+                .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * alpha_mult);
+            self.context.set_font_size(14.0);
+            self.context.move_to(text_x, y);
+            self.context.show_text(&status_text).unwrap();
+        } else {
+            let emoji = if is_off { "🔴 " } else { "🔵 " };
+            let full_text = format!("{}{}", emoji, status_text);
+            self.context.new_path();
+            self.context
+                .set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha * alpha_mult);
             self.context.set_font_size(14.0);
             self.context.move_to(x, y);
-            self.context.show_text(text).unwrap();
+            self.context.show_text(&full_text).unwrap();
         }
     }
 
@@ -859,6 +1185,21 @@ impl Renderer {
         self.context.scale(scale, scale);
         self.context.set_source_surface(surface, 0.0, 0.0).unwrap();
         self.context.paint_with_alpha(self.fade_alpha).unwrap();
+        self.context.restore().unwrap();
+    }
+
+    fn draw_icon_at_with_alpha(&self, x: f64, y: f64, surface: &ImageSurface, alpha: f64) {
+        self.context.save().unwrap();
+        let target_size = 24.0;
+        let scale_x = target_size / surface.width() as f64;
+        let scale_y = target_size / surface.height() as f64;
+        let scale = scale_x.min(scale_y);
+        self.context.translate(x, y);
+        self.context.scale(scale, scale);
+        self.context.set_source_surface(surface, 0.0, 0.0).unwrap();
+        self.context
+            .paint_with_alpha(self.fade_alpha * alpha)
+            .unwrap();
         self.context.restore().unwrap();
     }
 

@@ -30,13 +30,16 @@ num-traits = { version = "0.2" }
 rand = { version = "0.8" }
 reqwest = { version = "0.11", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-fastblur = "0.1"
-pam-client = "0.5"
-thiserror = "1.0"
-bytemuck = "1.14"
-calloop = "0.13"
-xkbcommon = "0.7"
-calloop-wayland-source = "0.3"
+    fastblur = "0.1"
+    pam-client = "0.5"
+    thiserror = "1.0"
+    bytemuck = "1.14"
+    calloop = "0.13"
+    xkbcommon = "0.7"
+    calloop-wayland-source = "0.3"
+    resvg = { version = "0.42", default-features = false }
+    usvg = { version = "0.42", default-features = false }
+    tiny-skia = "0.11"
 
 [features]
 default = ["networking"]

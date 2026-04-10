@@ -35,6 +35,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         keyboard::{KeyEvent, KeyboardHandler, Modifiers},
+        pointer::{PointerEvent, PointerEventKind, PointerHandler},
         SeatHandler, SeatState,
     },
     session_lock::{
@@ -248,6 +249,8 @@ impl ProvidesRegistryState for WaylandLock {
     registry_handlers![OutputState, SeatState];
 }
 
+impl WaylandLock {}
+
 impl CompositorHandler for WaylandLock {
     fn scale_factor_changed(
         &mut self,
@@ -432,7 +435,7 @@ impl SeatHandler for WaylandLock {
     ) {
         if capability == smithay_client_toolkit::seat::Capability::Keyboard {
             let _ = self.seat_state.get_keyboard_with_repeat(
-                qh,
+                &qh,
                 &seat,
                 None,
                 self.loop_handle.clone(),
@@ -440,6 +443,9 @@ impl SeatHandler for WaylandLock {
                     state.handle_key_event(event);
                 }),
             );
+        }
+        if capability == smithay_client_toolkit::seat::Capability::Pointer {
+            let _ = self.seat_state.get_pointer(&qh, &seat);
         }
     }
     fn remove_capability(
@@ -571,6 +577,43 @@ impl wayland_client::Dispatch<wayland_client::protocol::wl_registry::WlRegistry,
     }
 }
 
+impl PointerHandler for WaylandLock {
+    fn pointer_frame(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _pointer: &wayland_client::protocol::wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
+        for event in events {
+            if let PointerEventKind::Press { button, .. } = event.kind {
+                if button == 0x110 {
+                    let (x, y) = event.position;
+                    if let Ok(lm) = self.lock_manager.lock() {
+                        for surface in &lm.surfaces {
+                            if surface.matches_surface(&event.surface) {
+                                for (action, rx, ry, rw, rh) in &surface.renderer.media_rects {
+                                    if x >= *rx && x <= rx + rw && y >= *ry && y <= ry + rh {
+                                        match action.as_str() {
+                                            "play" => self.system_manager.media_play_pause(),
+                                            "stop" => self.system_manager.media_stop(),
+                                            "next" => self.system_manager.media_next(),
+                                            "prev" => self.system_manager.media_prev(),
+                                            _ => {}
+                                        }
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+smithay_client_toolkit::delegate_pointer!(WaylandLock);
 smithay_client_toolkit::delegate_compositor!(WaylandLock);
 smithay_client_toolkit::delegate_output!(WaylandLock);
 smithay_client_toolkit::delegate_shm!(WaylandLock);

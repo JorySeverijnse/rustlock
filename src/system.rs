@@ -259,6 +259,14 @@ impl SystemManager {
         }
     }
 
+    pub fn media_stop(&self) {
+        if let Ok(finder) = PlayerFinder::new() {
+            if let Ok(player) = finder.find_active() {
+                let _ = player.stop();
+            }
+        }
+    }
+
     pub fn media_next(&self) {
         if let Ok(finder) = PlayerFinder::new() {
             if let Ok(player) = finder.find_active() {
