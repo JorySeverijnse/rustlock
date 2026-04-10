@@ -6,13 +6,13 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(author, version, about, long_about = None)]
 pub struct Config {
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "false", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub screenshots: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "false", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub clock: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub indicator: bool,
 
     #[arg(long, default_value = "100")]
@@ -54,7 +54,7 @@ pub struct Config {
     #[arg(long, default_value = "E5A445", value_parser = util::parse_hex_color)]
     pub caps_lock_text_color: (f64, f64, f64, f64),
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_caps_lock_text: bool,
 
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
@@ -85,22 +85,25 @@ pub struct Config {
     #[arg(long)]
     pub log_file: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_media: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_battery: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_network: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_bluetooth: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "true", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
     pub show_album_art: bool,
 
-    #[arg(long, action = clap::ArgAction::Set, num_args = 0..=1, default_value = "false", default_missing_value = "true")]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub hide_password: bool,
+
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_keyboard_layout: bool,
 
     #[arg(long)]
@@ -203,6 +206,7 @@ impl Config {
                     merge_bool(&mut config.show_network, "show_network");
                     merge_bool(&mut config.show_bluetooth, "show_bluetooth");
                     merge_bool(&mut config.show_album_art, "show_album_art");
+                    merge_bool(&mut config.hide_password, "hide_password");
                     merge_bool(&mut config.show_keyboard_layout, "show_keyboard_layout");
 
                     if !is_cli("image") {

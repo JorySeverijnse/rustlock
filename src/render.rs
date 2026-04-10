@@ -14,8 +14,10 @@ pub struct Renderer {
     fade_alpha: f64,
     wrong_password_shown: bool,
     key_highlight_shown: bool,
+    cleared_feedback_shown: bool,
     wrong_password_start: Option<Instant>,
     key_highlight_start: Option<Instant>,
+    cleared_feedback_start: Option<Instant>,
     key_highlight_angle: f64,
     background: Option<ImageSurface>,
     password_display: String,
@@ -51,8 +53,10 @@ impl Renderer {
             fade_alpha: 0.0,
             wrong_password_shown: false,
             key_highlight_shown: false,
+            cleared_feedback_shown: false,
             wrong_password_start: None,
             key_highlight_start: None,
+            cleared_feedback_start: None,
             key_highlight_angle: 0.0,
             background: None,
             password_display: String::new(),
@@ -183,6 +187,12 @@ impl Renderer {
         self.key_highlight_angle = ((random_val % 360) as f64).to_radians();
     }
 
+    /// Show cleared feedback
+    pub fn show_cleared_feedback(&mut self) {
+        self.cleared_feedback_shown = true;
+        self.cleared_feedback_start = Some(Instant::now());
+    }
+
     /// Set the password display string (masked)
     pub fn set_password_display(&mut self, password: String) {
         self.password_display = password;
@@ -248,6 +258,10 @@ impl Renderer {
 
         if self.key_highlight_shown {
             self.draw_key_highlight_feedback();
+        }
+
+        if self.cleared_feedback_shown {
+            self.draw_cleared_feedback();
         }
 
         self.update_feedback_timers();
@@ -376,6 +390,9 @@ impl Renderer {
     }
 
     fn draw_password_display(&self) {
+        if self.config.hide_password {
+            return;
+        }
         let center_x = self.width as f64 / 2.0;
         let center_y = self.height as f64 / 2.0;
         let radius = self.config.indicator_radius as f64;
@@ -476,6 +493,56 @@ impl Renderer {
         }
     }
 
+    fn draw_cleared_feedback(&self) {
+        let center_x = self.width as f64 / 2.0;
+        let center_y = self.height as f64 / 2.0;
+        let radius = self.config.indicator_radius as f64;
+        let thickness = self.config.indicator_thickness as f64;
+        let intensity = if let Some(start) = self.cleared_feedback_start {
+            let elapsed = start.elapsed();
+            let duration = std::time::Duration::from_millis(500);
+            if elapsed < duration {
+                1.0 - (elapsed.as_secs_f64() / duration.as_secs_f64())
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
+        if intensity > 0.0 {
+            self.context.new_path();
+            self.context
+                .set_source_rgba(1.0, 0.0, 0.0, intensity * self.fade_alpha * 0.5);
+            self.context.arc(
+                center_x,
+                center_y,
+                radius - thickness / 2.0,
+                0.0,
+                2.0 * std::f64::consts::PI,
+            );
+            self.context.fill().unwrap();
+
+            self.context.new_path();
+            self.context
+                .set_source_rgba(1.0, 0.0, 0.0, intensity * self.fade_alpha);
+            self.context.set_line_width(thickness + 4.0);
+            self.context
+                .arc(center_x, center_y, radius, 0.0, 2.0 * std::f64::consts::PI);
+            self.context.stroke().unwrap();
+
+            self.context.new_path();
+            self.context.set_font_size(24.0);
+            self.context
+                .set_source_rgba(1.0, 1.0, 1.0, intensity * self.fade_alpha);
+            let text = "CLEARED";
+            let te = self.context.text_extents(text).unwrap();
+            self.context
+                .move_to(center_x - te.width() / 2.0, center_y + te.height() / 2.0);
+            self.context.show_text(text).unwrap();
+        }
+    }
+
     fn update_feedback_timers(&mut self) {
         self.update_uptime();
         if let Some(start) = self.wrong_password_start {
@@ -488,6 +555,12 @@ impl Renderer {
             if start.elapsed() > std::time::Duration::from_millis(300) {
                 self.key_highlight_shown = false;
                 self.key_highlight_start = None;
+            }
+        }
+        if let Some(start) = self.cleared_feedback_start {
+            if start.elapsed() > std::time::Duration::from_millis(500) {
+                self.cleared_feedback_shown = false;
+                self.cleared_feedback_start = None;
             }
         }
     }

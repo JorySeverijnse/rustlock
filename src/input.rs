@@ -30,6 +30,15 @@ impl InputHandler {
         // Update Caps Lock state
         self.caps_lock = modifiers.caps_lock;
 
+        if modifiers.ctrl && keysym == Keysym::u {
+            if !self.password_buffer.is_empty() {
+                self.password_buffer.clear();
+                self.cursor_position = 0;
+                return InputAction::PasswordCleared;
+            }
+            return InputAction::None;
+        }
+
         // Handle special keys first using keysym
         use smithay_client_toolkit::seat::keyboard::Keysym;
         match keysym {
@@ -37,6 +46,9 @@ impl InputHandler {
                 if !self.password_buffer.is_empty() && self.cursor_position > 0 {
                     self.cursor_position -= 1;
                     self.password_buffer.remove(self.cursor_position);
+                    if self.password_buffer.is_empty() {
+                        return InputAction::PasswordCleared;
+                    }
                 }
                 return InputAction::PasswordChanged;
             }
@@ -113,6 +125,7 @@ impl InputHandler {
 pub enum InputAction {
     None,
     PasswordChanged,
+    PasswordCleared,
     SubmitPassword(Zeroizing<String>),
     Cancel,
 }

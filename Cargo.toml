@@ -43,8 +43,8 @@ default = ["networking"]
 networking = ["dep:reqwest", "tokio/net"]
 
 [profile.release]
-opt-level = "z"     # Optimize for size
-lto = true          # Enable Link Time Optimization
-codegen-units = 1   # Reduce parallel code gen to allow better size optimization
-panic = "abort"     # Remove heavy stack unwinding code
-strip = true        # Automatically strip symbols and debug info
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

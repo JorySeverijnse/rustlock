@@ -174,6 +174,9 @@ impl LockedSurface {
                 self.input_handler.set_key_highlight();
                 self.key_highlight_shown = false;
             }
+            InputAction::PasswordCleared => {
+                self.renderer.show_cleared_feedback();
+            }
             InputAction::SubmitPassword(_) => {
                 self.input_handler.set_key_highlight();
                 self.key_highlight_shown = false;
