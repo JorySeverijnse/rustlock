@@ -25,12 +25,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       
-      - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install.sh | sh
-      
       - name: Install security tools
         run: |
-          cargo binstall --no-confirm cargo-audit cargo-deny cargo-cyclonedx cargo-outdated
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall --no-confirm cargo-audit cargo-deny cargo-cyclonedx cargo-outdated || \
+          cargo install cargo-audit cargo-deny cargo-cyclonedx cargo-outdated
       
       - name: Run cargo audit
         run: cargo audit
