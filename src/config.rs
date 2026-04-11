@@ -128,6 +128,9 @@ pub struct Config {
     pub media_play_icon: Option<String>,
 
     #[arg(long)]
+    pub media_pause_icon: Option<String>,
+
+    #[arg(long)]
     pub media_next_icon: Option<String>,
 
     /// Apply a pre-defined theme preset
@@ -248,6 +251,12 @@ impl Config {
                     if !is_cli("media_play_icon") {
                         if let Some(toml::Value::String(s)) = table.get("media_play_icon") {
                             config.media_play_icon = Some(s.clone());
+                        }
+                    }
+
+                    if !is_cli("media_pause_icon") {
+                        if let Some(toml::Value::String(s)) = table.get("media_pause_icon") {
+                            config.media_pause_icon = Some(s.clone());
                         }
                     }
 

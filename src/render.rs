@@ -33,6 +33,7 @@ pub struct Renderer {
     media_prev_icon_surface: Option<ImageSurface>,
     media_stop_icon_surface: Option<ImageSurface>,
     media_play_icon_surface: Option<ImageSurface>,
+    media_pause_icon_surface: Option<ImageSurface>,
     media_next_icon_surface: Option<ImageSurface>,
     pub media_rects: Vec<(String, f64, f64, f64, f64)>,
 }
@@ -73,6 +74,7 @@ impl Renderer {
             media_prev_icon_surface: None,
             media_stop_icon_surface: None,
             media_play_icon_surface: None,
+            media_pause_icon_surface: None,
             media_next_icon_surface: None,
             media_rects: Vec::new(),
         };
@@ -225,6 +227,25 @@ impl Renderer {
         if !play_path.is_empty() {
             log::debug!("Resolved Media Play icon path: {}", play_path);
             self.media_play_icon_surface = self.load_icon(&play_path);
+        }
+
+        let pause_names = ["media-playback-pause-symbolic", "media-playback-pause"];
+        let pause_path = self
+            .config
+            .media_pause_icon
+            .clone()
+            .or_else(|| {
+                for name in &pause_names {
+                    if let Some(path) = self.find_system_icon(name) {
+                        return Some(path);
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+        if !pause_path.is_empty() {
+            log::debug!("Resolved Media Pause icon path: {}", pause_path);
+            self.media_pause_icon_surface = self.load_icon(&pause_path);
         }
 
         let next_names = ["media-skip-forward-symbolic", "media-skip-forward"];
@@ -959,13 +980,13 @@ impl Renderer {
             self.context.show_text(&display_text).unwrap();
 
             let status_text = if self.system_status.media_playing {
-                if let Some(ref icon) = self.media_play_icon_surface {
-                    let play_y = start_y + 40.0;
+                if let Some(ref icon) = self.media_pause_icon_surface {
+                    let pause_y = start_y + 40.0;
                     let rx = center_x - icon.width() as f64 / 2.0;
-                    let ry = play_y - icon.height() as f64 / 2.0;
+                    let ry = pause_y - icon.height() as f64 / 2.0;
                     self.draw_icon_at(rx, ry, icon);
                     self.media_rects.push((
-                        "play".to_string(),
+                        "play_pause".to_string(),
                         rx,
                         ry,
                         icon.width() as f64,
@@ -976,7 +997,22 @@ impl Renderer {
                     "▶ Playing"
                 }
             } else {
-                "⏸ Paused"
+                if let Some(ref icon) = self.media_play_icon_surface {
+                    let play_y = start_y + 40.0;
+                    let rx = center_x - icon.width() as f64 / 2.0;
+                    let ry = play_y - icon.height() as f64 / 2.0;
+                    self.draw_icon_at(rx, ry, icon);
+                    self.media_rects.push((
+                        "play_pause".to_string(),
+                        rx,
+                        ry,
+                        icon.width() as f64,
+                        icon.height() as f64,
+                    ));
+                    ""
+                } else {
+                    "⏸ Paused"
+                }
             };
 
             if !status_text.is_empty() {

@@ -595,7 +595,7 @@ impl PointerHandler for WaylandLock {
                                 for (action, rx, ry, rw, rh) in &surface.renderer.media_rects {
                                     if x >= *rx && x <= rx + rw && y >= *ry && y <= ry + rh {
                                         match action.as_str() {
-                                            "play" => self.system_manager.media_play_pause(),
+                                            "play_pause" => self.system_manager.media_play_pause(),
                                             "stop" => self.system_manager.media_stop(),
                                             "next" => self.system_manager.media_next(),
                                             "prev" => self.system_manager.media_prev(),

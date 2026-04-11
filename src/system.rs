@@ -38,7 +38,6 @@ impl SystemManager {
         let s_clone = status.clone();
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<SystemCommand>();
 
-        // Spawn a thread to update status periodically and handle commands
         std::thread::spawn(move || {
             let rt = match tokio::runtime::Runtime::new() {
                 Ok(rt) => rt,
@@ -55,7 +54,6 @@ impl SystemManager {
                 let mut last_art_data: Option<Arc<Vec<u8>>> = None;
 
                 loop {
-                    // Try to connect to system DBus if not connected
                     if conn.is_none() {
                         match Connection::system().await {
                             Ok(c) => conn = Some(c),
@@ -81,7 +79,9 @@ impl SystemManager {
                                     use std::collections::HashMap;
                                     if let Ok(props) = reply.body().deserialize::<HashMap<String, zbus::zvariant::OwnedValue>>() {
                                         if let Some(v) = props.get("Percentage") {
-                                            new_status.battery_percent = v.downcast_ref::<f64>().ok();
+                                            if let Ok(val) = v.downcast_ref::<f64>() {
+                                                new_status.battery_percent = Some(val);
+                                            }
                                         }
                                         if let Some(v) = props.get("State") {
                                             if let Ok(state) = v.downcast_ref::<u32>() {
@@ -90,47 +90,7 @@ impl SystemManager {
                                         }
                                     }
                                 }
-                            }
 
-                            // 2. MPRIS status
-                            if let Ok(finder) = PlayerFinder::new() {
-                                if let Ok(player) = finder.find_active() {
-                                    if let Ok(metadata) = player.get_metadata() {
-                                        new_status.media_title = metadata.title().map(|s| s.to_string());
-                                        new_status.media_artist = metadata.artists().map(|a| a.join(", "));
-                                        new_status.media_art_url = metadata.art_url().map(|u| u.to_string());
-
-                                        if new_status.media_art_url != last_art_url {
-                                            last_art_url = new_status.media_art_url.clone();
-                                            last_art_data = None;
-                                            if let Some(ref url) = last_art_url {
-                                                if url.starts_with("file://") {
-                                                    let path = url.trim_start_matches("file://");
-                                                    if let Ok(data) = std::fs::read(path) {
-                                                        last_art_data = Some(Arc::new(data));
-                                                    }
-                                                } else if url.starts_with("http") {
-                                                    #[cfg(feature = "networking")]
-                                                    if let Ok(resp) = reqwest::get(url).await {
-                                                        if let Ok(bytes) = resp.bytes().await {
-                                                            last_art_data = Some(Arc::new(bytes.to_vec()));
-                                                        }
-                                                    }
-                                                    #[cfg(not(feature = "networking"))]
-                                                    {
-                                                        log::debug!("Networking disabled, skipping remote album art: {}", url);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        new_status.media_art_data = last_art_data.clone();
-                                    }
-                                    new_status.media_playing = player.get_playback_status().map(|s| matches!(s, mpris::PlaybackStatus::Playing)).unwrap_or(false);
-                                }
-                            }
-
-                            // 3. WiFi status (NetworkManager)
-                            if let Some(ref c) = conn {
                                 if let Ok(reply) = c.call_method(
                                     Some("org.freedesktop.NetworkManager"),
                                     "/org/freedesktop/NetworkManager",
@@ -149,7 +109,7 @@ impl SystemManager {
                                             ).await {
                                                 if let Ok(val) = dev_type_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
                                                     if let Ok(dev_type) = val.downcast_ref::<u32>() {
-                                                        if dev_type == 2 { // WiFi
+                                                        if dev_type == 2 {
                                                             if let Ok(active_ap_reply) = c.call_method(
                                                                 Some("org.freedesktop.NetworkManager"),
                                                                 &dev_path,
@@ -160,20 +120,20 @@ impl SystemManager {
                                                                 if let Ok(ap_val) = active_ap_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
                                                                     if let Ok(ap_path) = ap_val.downcast_ref::<zbus::zvariant::ObjectPath>() {
                                                                         if ap_path.as_str() != "/" {
-                                                                                if let Ok(ssid_reply) = c.call_method(
-                                                                                    Some("org.freedesktop.NetworkManager"),
-                                                                                    &ap_path,
-                                                                                    Some("org.freedesktop.DBus.Properties"),
-                                                                                    "Get",
-                                                                                    &("org.freedesktop.NetworkManager.AccessPoint", "Ssid"),
-                                                                                ).await {
-                                                                                    if let Ok(ssid_val) = ssid_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
-                                                                                        let ssid_bytes: Result<Vec<u8>, _> = ssid_val.try_into();
-                                                                                        if let Ok(ssid_bytes) = ssid_bytes {
-                                                                                            new_status.wifi_ssid = Some(String::from_utf8_lossy(&ssid_bytes).to_string());
-                                                                                        }
+                                                                            if let Ok(ssid_reply) = c.call_method(
+                                                                                Some("org.freedesktop.NetworkManager"),
+                                                                                &ap_path,
+                                                                                Some("org.freedesktop.DBus.Properties"),
+                                                                                "Get",
+                                                                                &("org.freedesktop.NetworkManager.AccessPoint", "Ssid"),
+                                                                            ).await {
+                                                                                if let Ok(ssid_val) = ssid_reply.body().deserialize::<zbus::zvariant::OwnedValue>() {
+                                                                                    let ssid_bytes: Result<Vec<u8>, _> = ssid_val.try_into();
+                                                                                    if let Ok(ssid_bytes) = ssid_bytes {
+                                                                                        new_status.wifi_ssid = Some(String::from_utf8_lossy(&ssid_bytes).to_string());
                                                                                     }
                                                                                 }
+                                                                            }
                                                                             if let Ok(strength_reply) = c.call_method(
                                                                                 Some("org.freedesktop.NetworkManager"),
                                                                                 &ap_path,
@@ -230,6 +190,54 @@ impl SystemManager {
                                 }
                             }
 
+                            let mpris_status = tokio::task::spawn_blocking(move || {
+                                let mut media_title = None;
+                                let mut media_artist = None;
+                                let mut media_art_url = None;
+                                let mut media_playing = false;
+                                if let Ok(finder) = PlayerFinder::new() {
+                                    if let Ok(player) = finder.find_active() {
+                                        if let Ok(metadata) = player.get_metadata() {
+                                            media_title = metadata.title().map(|s| s.to_string());
+                                            media_artist = metadata.artists().map(|a| a.join(", "));
+                                            media_art_url = metadata.art_url().map(|u| u.to_string());
+                                        }
+                                        media_playing = player.get_playback_status().map(|s| matches!(s, mpris::PlaybackStatus::Playing)).unwrap_or(false);
+                                    }
+                                }
+                                (media_title, media_artist, media_art_url, media_playing)
+                            }).await.unwrap_or((None, None, None, false));
+
+                            new_status.media_title = mpris_status.0;
+                            new_status.media_artist = mpris_status.1;
+                            new_status.media_art_url = mpris_status.2;
+                            new_status.media_playing = mpris_status.3;
+
+                            if new_status.media_art_url != last_art_url {
+                                last_art_url = new_status.media_art_url.clone();
+                                last_art_data = None;
+                                if let Some(ref url) = last_art_url {
+                                    if url.starts_with("file://") {
+                                        let path = url.trim_start_matches("file://");
+                                        if let Ok(data) = std::fs::read(path) {
+                                            last_art_data = Some(Arc::new(data));
+                                        }
+                                    } else if url.starts_with("http") {
+                                        #[cfg(feature = "networking")]
+                                        if let Ok(resp) = reqwest::get(url).await {
+                                            if let Ok(bytes) = resp.bytes().await {
+                                                last_art_data = Some(Arc::new(bytes.to_vec()));
+                                            }
+                                        }
+                                        #[cfg(not(feature = "networking"))]
+                                        {
+                                            log::debug!("Networking disabled, skipping remote album art: {}", url);
+                                        }
+                                    }
+                                }
+                            }
+                            new_status.media_art_data = last_art_data.clone();
+
                             {
                                 if let Ok(mut s) = s_clone.lock() {
                                     *s = new_status;
@@ -243,9 +251,7 @@ impl SystemManager {
                                     SystemCommand::Reboot => "Reboot",
                                     SystemCommand::Suspend => "Suspend",
                                 };
-
                                 debug!("Executing system command: {}", method);
-                                // Set a timeout for the DBus call to prevent hanging the background thread
                                 let result = tokio::time::timeout(
                                     tokio::time::Duration::from_secs(5),
                                     c.call_method(
@@ -256,7 +262,6 @@ impl SystemManager {
                                         &(true),
                                     )
                                 ).await;
-
                                 if result.is_err() {
                                     error!("System command {} timed out", method);
                                 }
