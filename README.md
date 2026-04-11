@@ -18,6 +18,8 @@ A high-performance Wayland screen locker written in Rust, inspired by `swaylock-
 - 🔐 **Password Indicator**:
   - Circular ring with configurable radius and thickness
   - Dynamic key highlight segments that rotate with each keystroke
+  - Full password editing with cursor navigation (arrow keys, Home/End)
+  - Visual cursor indicator between dots
   - Caps lock indicator
 - 🕐 **Information Display**:
   - Centered clock (HH:MM format)
@@ -41,7 +43,7 @@ A high-performance Wayland screen locker written in Rust, inspired by `swaylock-
   - Configurable grace period (any key press within N seconds unlocks without password)
 - 🎯 **Customization**:
   - Custom icons for WiFi, Bluetooth, Battery
-  - Theme presets (dark, light, nord, dracula)
+  - Theme presets (modern, pixel, glass)
   - Configuration via config file or CLI
 
 ---
@@ -81,6 +83,15 @@ When locked, use function keys to control the system:
 - **F2**: Reboot
 - **F3**: Power Off
 
+### Password Entry
+
+Use arrow keys to move the cursor while entering your password:
+- **Left/Right arrows**: Move cursor one position
+- **Home**: Move to start
+- **End**: Move to end
+- **Delete**: Delete character at cursor
+- **Ctrl+U**: Clear entire password
+
 ---
 
 ## ⚙️ Configuration
@@ -117,6 +128,7 @@ Options can be provided via command line or a configuration file at `~/.config/r
 | `--show-bluetooth` | Show Bluetooth status (default: true) |
 | `--show-keyboard-layout` | Show keyboard layout indicator (default: true) |
 | `--show-album-art` | Show album art (default: true) |
+| `--hide-password` | Hide password dots (default: false, dots are shown) |
 | **Custom Icons** | |
 | `--wifi-icon <PATH>` | Custom WiFi icon (PNG/SVG) |
 | `--bluetooth-icon <PATH>` | Custom Bluetooth icon (PNG/SVG) |
@@ -126,7 +138,7 @@ Options can be provided via command line or a configuration file at `~/.config/r
 | `--fade-in <SECONDS>` | Fade-in animation duration (default: 0.2) |
 | `--pam-service <NAME>` | PAM service name (default: "rustlock") |
 | `--config <PATH>` | Path to config file |
-| `--theme <NAME>` | Theme preset: dark, light, nord, dracula |
+| `--theme <NAME>` | Theme preset: modern, pixel, glass |
 | `--debug` | Enable debug logging |
 | `--log-file` | Write logs to `~/.rustlock.log` |
 
@@ -164,29 +176,6 @@ The binary will be available at `target/release/rustlock`.
   ```bash
   cargo build --release --no-default-features
   ```
-
----
-
-## ✅ Completed
-
-- [x] PAM-based authentication
-- [x] Grace period (any key unlocks within N seconds)
-- [x] Screenshot capture with blur/vignette/pixelate/swirl/melting effects
-- [x] Configuration file support (`~/.config/rustlock/config.toml`) with schema validation
-- [x] Debug logging to `~/.rustlock.log`
-- [x] Clock and date display
-- [x] Password indicator ring with rotating highlights
-- [x] Dynamic screen resolution detection
-- [x] Full multi-monitor support with different resolutions
-- [x] Theme/profile support with presets (dark, light, nord, dracula)
-- [x] Wayland protocol stability fixes
-- [x] Media control integration (MPRIS support with Album Art)
-- [x] Battery, WiFi, and Bluetooth status indicators
-- [x] Custom background image support
-- [x] Custom icons for status indicators
-- [x] Keyboard layout indicator
-- [x] Session management (F1-F3 keys)
-- [x] Caps lock indicator
 
 ---
 
