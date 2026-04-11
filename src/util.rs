@@ -72,10 +72,7 @@ where
     }
 }
 
-pub fn serialize_blur_effect<S>(
-    val: &Option<(u32, u32)>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_blur_effect<S>(val: &Option<(u32, u32)>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

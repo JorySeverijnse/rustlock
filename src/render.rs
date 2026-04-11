@@ -543,7 +543,7 @@ impl Renderer {
 
             // Preserve aspect ratio by using the larger scale factor (zoom to fill)
             let scale = scale_x.max(scale_y);
-            
+
             // Calculate offsets to center the image
             let offset_x = (self.width as f64 - bg_width * scale) / 2.0;
             let offset_y = (self.height as f64 - bg_height * scale) / 2.0;
