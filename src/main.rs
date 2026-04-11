@@ -105,6 +105,7 @@ impl log::Log for DualLogger {
 }
 
 struct WaylandLock {
+    conn: Connection,
     loop_handle: LoopHandle<'static, Self>,
     lock_manager: Arc<Mutex<LockManager>>,
     config: Config,
@@ -124,7 +125,6 @@ struct WaylandLock {
     captured_backgrounds: Vec<Option<cairo::ImageSurface>>,
     pending_screenshots: usize,
     exit: bool,
-    unlocking: bool,
     screenshot_manager: Option<ScreenshotManager>,
     grace_until: Option<Instant>,
     system_manager: Arc<SystemManager>,
@@ -141,8 +141,9 @@ impl WaylandLock {
             log::info!("✅ Authentication successful - unlocking session");
             if let Some(session_lock) = &self.session_lock {
                 session_lock.unlock();
-                self.unlocking = true;
-                log::debug!("Unlock requested - waiting for compositor finished event");
+                let _ = self.conn.flush();
+                self.exit = true;
+                log::debug!("Unlock requested - exiting");
             } else {
                 log::error!("No session_lock available to unlock!");
                 self.exit = true;
@@ -298,9 +299,61 @@ impl OutputHandler for WaylandLock {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
-    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {}
-    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {}
-    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {
+    fn new_output(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, output: WlOutput) {
+        // If we are already locked, we must create a lock surface for this newly
+        // available output. This happens e.g. when a monitor powers back on after
+        // "niri msg action power-off-monitors" — niri re-advertises the output and
+        // the compositor requires a lock surface on every output or it shows a
+        // compositor-defined fallback (typically a solid red/black screen).
+        if let Some(session_lock) = &self.session_lock {
+            let surface = self.compositor_state.create_surface(qh);
+            let (width, height) = self.get_output_dimensions(&output);
+            let lock_surface = session_lock.create_lock_surface(surface.clone(), &output, qh);
+            self.lock_surfaces.push(lock_surface);
+            if !self.outputs.contains(&output) {
+                self.outputs.push(output.clone());
+            }
+            if let Ok(mut lm) = self.lock_manager.lock() {
+                lm.add_surface(width, height, output);
+                let count = lm.surface_count();
+                if let Some(ls) = lm.get_surface_mut(count - 1) {
+                    ls.set_wayland_surface(surface);
+                }
+            }
+            log::info!("Created lock surface for newly available output");
+        }
+    }
+    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: WlOutput) {
+        // Dimension changes while locked are handled by the compositor sending a configure
+        // event on the lock surface, which the SessionLockHandler::configure callback
+        // already processes via locked_surface.resize().
+    }
+    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, output: WlOutput) {
+        // Clean up the lock surface and associated state for this output.
+        // This happens e.g. when a monitor is powered off with its physical power switch.
+        // When the monitor comes back on, new_output() will fire and recreate everything.
+        //
+        // outputs and captured_backgrounds are kept at the same indices, so we remove
+        // from both using the same position.
+        let output_id = Proxy::id(&output);
+        if let Some(idx) = self.outputs.iter().position(|o| Proxy::id(o) == output_id) {
+            self.outputs.remove(idx);
+            if idx < self.captured_backgrounds.len() {
+                self.captured_backgrounds.remove(idx);
+            }
+        }
+
+        // lock_manager.surfaces and lock_surfaces are built in tandem and share indices,
+        // so the index returned from the lock_manager removal applies to lock_surfaces too.
+        if let Ok(mut lm) = self.lock_manager.lock() {
+            if let Some(idx) = lm.remove_surface_by_output(&output) {
+                if idx < self.lock_surfaces.len() {
+                    drop(self.lock_surfaces.remove(idx));
+                }
+            }
+        }
+
+        log::info!("Removed lock surface for destroyed output");
     }
 }
 
@@ -660,6 +713,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pool = SlotPool::new(1, &shm_state)?;
 
     let mut state = WaylandLock {
+        conn: conn.clone(),
         loop_handle: event_loop.handle(),
         lock_manager: lock_manager.clone(),
         config: config.clone(),
@@ -679,7 +733,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         captured_backgrounds: Vec::new(),
         pending_screenshots: 0,
         exit: false,
-        unlocking: false,
         screenshot_manager: ScreenshotManager::new(&globals, &qh).ok(),
         grace_until: None,
         system_manager: system_manager.clone(),
@@ -770,9 +823,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        if state.unlocking {
-            return calloop::timer::TimeoutAction::ToDuration(Duration::from_millis(100));
-        }
 
         let mut status = state.system_manager.get_status();
         status.keyboard_layout = Some(state.current_layout.to_string());

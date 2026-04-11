@@ -265,6 +265,17 @@ impl LockManager {
         action
     }
 
+    pub fn remove_surface_by_output(&mut self, output: &wl_output::WlOutput) -> Option<usize> {
+        use wayland_client::Proxy;
+        let output_id = Proxy::id(output);
+        let idx = self
+            .surfaces
+            .iter()
+            .position(|s| Proxy::id(s.output()) == output_id)?;
+        self.surfaces.remove(idx);
+        Some(idx)
+    }
+
     pub fn set_system_status(&mut self, status: SystemStatus) {
         for surface in &mut self.surfaces {
             surface.set_system_status(status.clone());
