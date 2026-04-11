@@ -61,6 +61,44 @@ impl InputHandler {
             Keysym::Escape => {
                 return InputAction::Cancel;
             }
+            Keysym::Left => {
+                if self.cursor_position > 0 {
+                    self.cursor_position -= 1;
+                    return InputAction::CursorMoved;
+                }
+                return InputAction::None;
+            }
+            Keysym::Right => {
+                if self.cursor_position < self.password_buffer.len() {
+                    self.cursor_position += 1;
+                    return InputAction::CursorMoved;
+                }
+                return InputAction::None;
+            }
+            Keysym::Home => {
+                if self.cursor_position > 0 {
+                    self.cursor_position = 0;
+                    return InputAction::CursorMoved;
+                }
+                return InputAction::None;
+            }
+            Keysym::End => {
+                if self.cursor_position < self.password_buffer.len() {
+                    self.cursor_position = self.password_buffer.len();
+                    return InputAction::CursorMoved;
+                }
+                return InputAction::None;
+            }
+            Keysym::Delete => {
+                if self.cursor_position < self.password_buffer.len() {
+                    self.password_buffer.remove(self.cursor_position);
+                    if self.password_buffer.is_empty() {
+                        return InputAction::PasswordCleared;
+                    }
+                    return InputAction::PasswordChanged;
+                }
+                return InputAction::None;
+            }
             _ => {}
         }
 
@@ -80,6 +118,10 @@ impl InputHandler {
 
     pub fn password_length(&self) -> usize {
         self.password_buffer.len()
+    }
+
+    pub fn cursor_position(&self) -> usize {
+        self.cursor_position
     }
 
     /// Set wrong password feedback timer
@@ -125,6 +167,7 @@ pub enum InputAction {
     None,
     PasswordChanged,
     PasswordCleared,
+    CursorMoved,
     SubmitPassword(Zeroizing<String>),
     Cancel,
 }

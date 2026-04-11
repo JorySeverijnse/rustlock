@@ -647,7 +647,7 @@ impl PointerHandler for WaylandLock {
                             if surface.matches_surface(&event.surface) {
                                 for (action, rx, ry, rw, rh) in &surface.renderer.media_rects {
                                     if x >= *rx && x <= rx + rw && y >= *ry && y <= ry + rh {
-                                        match action.as_str() {
+                                        match *action {
                                             "play_pause" => self.system_manager.media_play_pause(),
                                             "stop" => self.system_manager.media_stop(),
                                             "next" => self.system_manager.media_next(),
@@ -822,7 +822,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 state.grace_until = None;
             }
         }
-
 
         let mut status = state.system_manager.get_status();
         status.keyboard_layout = Some(state.current_layout.to_string());

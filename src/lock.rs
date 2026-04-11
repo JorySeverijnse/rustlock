@@ -84,7 +84,14 @@ impl LockedSurface {
         if self.fade_alpha < 1.0 {
             let elapsed = self.start_time.elapsed();
             let fade_duration = std::time::Duration::from_secs_f32(self.config.fade_in);
-            let new_alpha = (elapsed.as_secs_f64() / fade_duration.as_secs_f64()).min(1.0);
+            // Ease-in-out cubic function
+            let t = (elapsed.as_secs_f64() / fade_duration.as_secs_f64()).clamp(0.0, 1.0);
+            let eased_t = if t < 0.5 {
+                4.0 * t * t * t
+            } else {
+                1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+            };
+            let new_alpha = eased_t.min(1.0);
             if (new_alpha - self.fade_alpha).abs() > 0.001 {
                 self.fade_alpha = new_alpha;
                 self.renderer.set_fade_alpha(self.fade_alpha);
@@ -121,6 +128,8 @@ impl LockedSurface {
 
         self.renderer
             .set_password_display(self.input_handler.password_length());
+        self.renderer
+            .set_cursor_position(self.input_handler.cursor_position());
         self.renderer.render();
     }
 
