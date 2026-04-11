@@ -107,13 +107,13 @@ impl Screenshot {
             .with_data(|src| data.copy_from_slice(src))
             .unwrap();
 
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        use rand::RngExt;
+        let mut rng = rand::rng();
 
         for x in 0..width {
             let mut melt_amount = 0.0;
             for y in 0..height {
-                melt_amount += rng.gen_range(0.0..factor);
+                melt_amount += rng.random_range(0.0..factor);
                 let src_y = (y as f32 - melt_amount).max(0.0) as i32;
 
                 let src_idx = (src_y as usize * stride) + (x as usize * 4);

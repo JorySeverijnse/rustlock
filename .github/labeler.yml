@@ -1,0 +1,23 @@
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ['README.md', '*.md', 'docs/**']
+
+features:
+  - changed-files:
+      - any-glob-to-any-file: ['src/input.rs', 'src/lock.rs', 'src/config.rs']
+
+rendering:
+  - changed-files:
+      - any-glob-to-any-file: ['src/render/**', 'src/render.rs']
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', '.github/workflows/**']
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: ['Cargo.toml', 'Cargo.lock']
+
+refactoring:
+  - changed-files:
+      - any-glob-to-any-file: ['src/util.rs', 'src/system.rs']

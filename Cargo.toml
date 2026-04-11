@@ -3,6 +3,8 @@ name = "rustlock"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
+authors = ["Jory Severijnse"]
+description = "A high-performance Wayland screen locker"
 
 [dependencies]
 smithay-client-toolkit = { version = "0.19", default-features = false, features = ["calloop", "xkbcommon"] }
@@ -27,7 +29,7 @@ zbus = { version = "5.14", default-features = false, features = ["tokio"] }
 mpris = "2.0"
 tokio = { version = "1.51", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
 num-traits = { version = "0.2" }
-rand = { version = "0.8" }
+rand = { version = "0.10" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
     fastblur = "0.1"
