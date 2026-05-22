@@ -139,6 +139,11 @@ impl WaylandLock {
 
         if success {
             log::info!("✅ Authentication successful - unlocking session");
+            // ext-session-lock-v1 recommends destroying lock surfaces before
+            // issuing unlock_and_destroy. With multiple outputs Hyprland
+            // otherwise treats the unlock as a client crash and shows its
+            // failsafe screen.
+            self.lock_surfaces.clear();
             if let Some(session_lock) = &self.session_lock {
                 session_lock.unlock();
                 let _ = self.conn.flush();
@@ -808,9 +813,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .insert_source(auth_feedback_rx_actual, |event, _, state| {
             if let calloop::channel::Event::Msg(success) = event {
                 state.handle_auth_result(success);
-                if success {
-                    state.lock_surfaces.clear();
-                }
             }
         })?;
 
@@ -905,6 +907,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     while !state.exit && !state.ctrlc_exit.load(std::sync::atomic::Ordering::SeqCst) {
         event_loop.dispatch(Duration::from_millis(16), &mut state)?;
     }
+
+    // After unlock_and_destroy the compositor sends keyboard/pointer leave and
+    // delete_id events that must be processed before we disconnect, otherwise
+    // Hyprland treats the disconnect as a client crash and shows its failsafe
+    // screen (only reproducible on multi-output setups).
+    let _ = state.conn.roundtrip();
 
     log::info!("Exiting rustlock");
     Ok(())
