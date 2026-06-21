@@ -7,7 +7,7 @@ authors = ["Jory Severijnse"]
 description = "A high-performance Wayland screen locker"
 
 [dependencies]
-smithay-client-toolkit = { version = "0.19", default-features = false, features = ["calloop", "xkbcommon"] }
+smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
 wayland-client = { version = "0.31" }
 wayland-protocols = { version = "0.32", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
