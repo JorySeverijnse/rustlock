@@ -179,8 +179,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91e3bd0f4e25afa9cabc157908d14eeef9067d6448c49414d17b3fb55f0eadd0"
 dependencies = [
  "bitflags 2.11.0",
- "cairo-sys-rs",
+ "cairo-sys-rs 0.20.10",
  "glib",
+ "libc",
+]
+
+[[package]]
+name = "cairo-rs"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cc8d9aa793480744cd9a0524fef1a2e197d9eaa0f739cde19d16aba530dcb95"
+dependencies = [
+ "bitflags 2.11.0",
+ "cairo-sys-rs 0.22.0",
  "libc",
 ]
 
@@ -191,6 +202,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "059cc746549898cbfd9a47754288e5a958756650ef4652bbb6c5f71a6bda4f8b"
 dependencies = [
  "glib-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
+name = "cairo-sys-rs"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8b4985713047f5faee02b8db6a6ef32bbb50269ff53c1aee716d1d195b76d54"
+dependencies = [
  "libc",
  "system-deps",
 ]
@@ -1496,7 +1517,7 @@ version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "58890dc451db9964ac2d8874f903a4370a4b3932aa5281ff0c8d9810937ad84f"
 dependencies = [
- "cairo-rs",
+ "cairo-rs 0.20.12",
  "glib",
  "libc",
  "pango",
@@ -1509,7 +1530,7 @@ version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9952903f88aa93e2927e7bca2d1ebae64fc26545a9280b4ce6bddeda26b5c42"
 dependencies = [
- "cairo-sys-rs",
+ "cairo-sys-rs 0.20.10",
  "glib-sys",
  "libc",
  "pango-sys",
@@ -1957,7 +1978,7 @@ name = "rustlock"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cairo-rs",
+ "cairo-rs 0.22.0",
  "calloop",
  "calloop-wayland-source",
  "chrono",
@@ -2327,7 +2348,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
