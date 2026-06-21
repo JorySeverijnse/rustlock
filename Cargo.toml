@@ -21,7 +21,7 @@ serde = { version = "1.0", default-features = false, features = ["derive", "std"
 zeroize = "1.8"
 log = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-whoami = "1.6"
+whoami = "2.1"
 zbus = { version = "5.14", default-features = false, features = ["tokio"] }
 mpris = "2.0"
 tokio = { version = "1.51", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
