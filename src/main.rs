@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod effects;
 mod input;
 mod lock;
 mod render;
@@ -704,8 +705,8 @@ impl PointerHandler for WaylandLock {
         events: &[PointerEvent],
     ) {
         for event in events {
-            if let PointerEventKind::Press { button, .. } = event.kind {
-                if button == 0x110 {
+            match event.kind {
+                PointerEventKind::Press { button: 0x110, .. } => {
                     let (x, y) = event.position;
                     if let Ok(lm) = self.lock_manager.lock() {
                         for surface in &lm.surfaces {
@@ -728,14 +729,13 @@ impl PointerHandler for WaylandLock {
                                 if handled {
                                     return;
                                 }
-                                // Check indicator ring hit — toggle password peek
+                                // Check indicator ring hit — hold to peek (like Ctrl)
                                 let cx = surface.renderer.width as f64 / 2.0;
                                 let cy = surface.renderer.height as f64 / 2.0;
                                 let r = surface.renderer.config.indicator_radius as f64;
-                                let dx = x - cx;
-                                let dy = y - cy;
-                                if dx * dx + dy * dy <= r * r {
-                                    // Need to reborrow mutably for toggle
+                                let shape = surface.renderer.config.ring_shape;
+                                if crate::render::ring_shape::point_in_shape(cx, cy, r, shape, x, y)
+                                {
                                     drop(lm);
                                     if let Ok(mut lm) = self.lock_manager.lock() {
                                         if let Some(s) = lm
@@ -743,7 +743,7 @@ impl PointerHandler for WaylandLock {
                                             .iter_mut()
                                             .find(|s| s.matches_surface(&event.surface))
                                         {
-                                            s.toggle_peek();
+                                            s.set_peek_held(true);
                                             s.update();
                                             let _ = s.commit(&mut self.pool);
                                         }
@@ -754,6 +754,22 @@ impl PointerHandler for WaylandLock {
                         }
                     }
                 }
+                PointerEventKind::Release { button: 0x110, .. } => {
+                    if let Ok(mut lm) = self.lock_manager.lock() {
+                        // Clear peek on ALL surfaces. Wayland button release events
+                        // can reference a different wl_surface proxy than the press
+                        // event (compositor-dependent pointer grab semantics), so
+                        // matching by surface might miss the LockedSurface that has
+                        // peek_toggled=true. Iterating every surface guarantees peek
+                        // always ends on button release — matching Ctrl-hold behavior.
+                        for surface in &mut lm.surfaces {
+                            surface.set_peek_held(false);
+                            surface.update();
+                            let _ = surface.commit(&mut self.pool);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

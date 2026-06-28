@@ -45,6 +45,13 @@ impl fmt::Display for RingShape {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, clap::ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Fish,
+    Zsh,
+}
+
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(author, version, about, long_about = None)]
 pub struct Config {
@@ -90,10 +97,6 @@ pub struct Config {
     #[arg(long)]
     #[serde(default)]
     pub effect_swirl: Option<f32>,
-
-    #[arg(long)]
-    #[serde(default)]
-    pub effect_melting: Option<f32>,
 
     #[arg(long, default_value = "785412", value_parser = util::parse_hex_color)]
     #[serde(
@@ -144,7 +147,7 @@ pub struct Config {
     )]
     pub verifying_color: (f64, f64, f64, f64),
 
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_caps_lock_text: bool,
 
     #[arg(long, default_value = "00000000", value_parser = util::parse_hex_color)]
@@ -196,19 +199,19 @@ pub struct Config {
     #[arg(long, default_value = "10000")]
     pub auth_timeout: u64,
 
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_media: bool,
 
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_battery: bool,
 
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_network: bool,
 
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_bluetooth: bool,
 
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_album_art: bool,
 
     #[arg(long, action = clap::ArgAction::SetTrue)]
@@ -292,6 +295,11 @@ pub struct Config {
     /// Timeout (seconds) for system commands (poweroff, reboot, suspend)
     #[arg(long, default_value = "5")]
     pub command_timeout: u64,
+
+    /// Generate shell completions for the given shell
+    #[arg(long, value_enum)]
+    #[serde(skip)]
+    pub completions: Option<CompletionShell>,
 }
 
 impl Config {
@@ -299,6 +307,26 @@ impl Config {
         use clap::CommandFactory;
 
         let mut config = Config::parse();
+
+        // Handle --completions early (before config file merge so file can't inject it)
+        if let Some(shell) = config.completions {
+            use clap_complete::Shell;
+            let mut cmd = Config::command();
+            let name = "rustlock";
+            match shell {
+                CompletionShell::Bash => {
+                    clap_complete::generate(Shell::Bash, &mut cmd, name, &mut std::io::stdout())
+                }
+                CompletionShell::Fish => {
+                    clap_complete::generate(Shell::Fish, &mut cmd, name, &mut std::io::stdout())
+                }
+                CompletionShell::Zsh => {
+                    clap_complete::generate(Shell::Zsh, &mut cmd, name, &mut std::io::stdout())
+                }
+            }
+            std::process::exit(0);
+        }
+
         let cmd = Config::command();
         let matches = cmd.get_matches();
 

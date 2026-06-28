@@ -31,7 +31,8 @@ pub struct LockedSurface {
     /// Last clock minute (unix-minute) we rendered, to detect %H:%M rollover.
     last_minute: i64,
     ctrl_held: bool,
-    /// Set by clicking on the indicator ring. Persists until clicked again.
+    /// True while the pointer button is held on the indicator ring (hold-to-peek).
+    /// Cleared on button release, matching Ctrl-hold transient behavior.
     peek_toggled: bool,
 }
 
@@ -188,18 +189,8 @@ impl LockedSurface {
             let buf = self.input_handler.password_buffer();
             let length = self.input_handler.password_length();
             if self.ctrl_held || self.peek_toggled {
-                log::debug!(
-                    "LockedSurface::update: PEEK mode (ctrl={}, toggled={})",
-                    self.ctrl_held,
-                    self.peek_toggled
-                );
                 self.renderer.peek_password(buf.as_str());
             } else {
-                log::debug!(
-                    "LockedSurface::update: DOT mode (ctrl={}, toggled={})",
-                    self.ctrl_held,
-                    self.peek_toggled
-                );
                 self.renderer.set_password_display(length);
             }
         }
@@ -316,11 +307,12 @@ impl LockedSurface {
         }
     }
 
-    /// Toggle peek mode on/off. Called when the user clicks on the indicator
-    /// ring. Persists until toggled again (unlike Ctrl-hold which is transient).
-    pub fn toggle_peek(&mut self) {
-        self.peek_toggled = !self.peek_toggled;
-        log::debug!("toggle_peek: peek_toggled = {}", self.peek_toggled);
+    /// Set peek mode on/off. Called when the user presses (held=true) or
+    /// releases (held=false) the mouse button on the indicator ring. Works
+    /// like Ctrl-hold — peek only lasts while the button is held.
+    pub fn set_peek_held(&mut self, held: bool) {
+        self.peek_toggled = held;
+        log::debug!("set_peek_held: peek_toggled = {}", self.peek_toggled);
         self.dirty = true;
     }
 }

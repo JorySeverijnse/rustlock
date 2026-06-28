@@ -21,7 +21,7 @@ macro_rules! render_try {
 mod feedback;
 mod indicator;
 mod media_bar;
-mod ring_shape;
+pub(crate) mod ring_shape;
 mod status_bar;
 
 pub struct Renderer {
@@ -128,16 +128,11 @@ impl Renderer {
     }
 
     pub fn set_password_display(&mut self, length: usize) {
-        log::debug!("Renderer::set_password_display(length={})", length);
         self.password_display = ".".repeat(length);
         self.peeking = false;
     }
 
     pub fn peek_password(&mut self, password: &str) {
-        log::debug!(
-            "Renderer::peek_password(len={}, peeking=true)",
-            password.len()
-        );
         self.password_display = password.to_string();
         self.peeking = true;
     }

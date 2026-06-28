@@ -1,9 +1,13 @@
 # 🔒 RustLock
 
-[![License](https://img.shields.io/badge/license-AGPL--3.0%2B-blue.svg)](https://github.com/yourusername/rustlock/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-GPL-3.0-blue.svg)](https://github.com/yourusername/rustlock/blob/main/LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/yourusername/rustlock/releases)
 
 A high-performance Wayland screen locker written in Rust, inspired by `swaylock-effects`.
+
+<p align="center">
+  <img src="assets/rustlock-effects.webp" alt="RustLock effects demo" width="800">
+</p>
 
 ---
 
@@ -13,7 +17,7 @@ A high-performance Wayland screen locker written in Rust, inspired by `swaylock-
 - 🎨 **Visual Effects**:
   - Gaussian blur (configurable radius and passes)
   - Vignette effect (configurable base and factor)
-  - Pixelate, Swirl, and Melting effects
+  - Pixelate and Swirl effects
   - Smooth fade-in animation
 - 🔐 **Password Indicator**:
   - Circular ring with configurable radius and thickness
@@ -123,7 +127,6 @@ Options can be provided via command line or a configuration file at `~/.config/r
 | `--effect-vignette <B>:<F>` | — | Vignette: base : factor (e.g., `0.5:0.5`) |
 | `--effect-pixelate <S>` | — | Pixelate effect with block size in pixels |
 | `--effect-swirl <A>` | — | Swirl distortion with angle |
-| `--effect-melting <F>` | — | Melting distortion with factor |
 | **Colors** (hex `RRGGBB[AA]`) | | |
 | `--ring-color <HEX>` | `#785412` | Outer ring color |
 | `--line-color <HEX>` | `#00000000` | Separator line color |
@@ -135,14 +138,14 @@ Options can be provided via command line or a configuration file at `~/.config/r
 | `--caps-lock-color <HEX>` | `#E5A445` | Caps lock indicator ring color |
 | `--caps-lock-text-color <HEX>` | `#E5A445` | Caps lock text color |
 | `--verifying-color <HEX>` | `#0072FF` | Verifying feedback ring color |
-| `--show-caps-lock-text` | `true` | Show "CAPS" text when caps lock is active |
+| `--show-caps-lock-text` | `false` | Show "CAPS" text when caps lock is active |
 | **Display** | | |
-| `--show-media` | `true` | Show MPRIS media player information |
-| `--show-battery` | `true` | Show battery status |
-| `--show-network` | `true` | Show WiFi SSID and signal strength |
-| `--show-bluetooth` | `true` | Show Bluetooth status |
-| `--show-album-art` | `true` | Show album art for media |
-| `--show-keyboard-layout` | `true` | Show keyboard layout indicator |
+| `--show-media` | `false` | Show MPRIS media player information |
+| `--show-battery` | `false` | Show battery status |
+| `--show-network` | `false` | Show WiFi SSID and signal strength |
+| `--show-bluetooth` | `false` | Show Bluetooth status |
+| `--show-album-art` | `false` | Show album art for media |
+| `--show-keyboard-layout` | `false` | Show keyboard layout indicator |
 | **Feedback & Timing** | | |
 | `--fade-in <SECONDS>` | `0.2` | Fade-in animation duration |
 | `--grace <SECONDS>` | `0` | Grace period — any key press unlocks within N seconds |

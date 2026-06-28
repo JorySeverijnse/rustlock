@@ -207,6 +207,40 @@ pub(crate) fn build_fill_path(
     build_ring_path(ctx, cx, cy, inner_r, shape);
 }
 
+/// Check whether a point `(px, py)` lies inside the shape's fill area.
+/// This is used for hit‑testing (e.g. click & hold to peek) so the clickable
+/// region matches what the user sees on screen.
+pub(crate) fn point_in_shape(cx: f64, cy: f64, r: f64, shape: RingShape, px: f64, py: f64) -> bool {
+    let dx = (px - cx).abs();
+    let dy = (py - cy).abs();
+    match shape {
+        RingShape::Circle => dx * dx + dy * dy <= r * r,
+        RingShape::Square => dx <= r && dy <= r,
+        RingShape::Diamond => dx + dy <= r,
+        RingShape::Hexagon => {
+            // Regular hexagon, vertex at (r, 0), edge slopes at ±60°.
+            // For |dx| ≥ r/2 the sloping edge bounds: |dy| ≤ √3 (r − |dx|).
+            // For |dx| ≤ r/2 the flat top bounds:    |dy| ≤ √3 r / 2.
+            let sqrt3 = 3.0_f64.sqrt();
+            if dx >= r / 2.0 {
+                dy <= sqrt3 * (r - dx)
+            } else {
+                dy <= r * sqrt3 / 2.0
+            }
+        }
+        RingShape::Pill => {
+            // Pill = centre rectangle (2r × 2r) + semicircular caps of
+            // radius r at each end.  Total width 4r, height 2r.
+            if dx <= r {
+                dy <= r
+            } else {
+                let ex = dx - r;
+                ex * ex + dy * dy <= r * r
+            }
+        }
+    }
+}
+
 /// Return the normalized `t` offset that places the first password dot at the
 /// visual top-centre of the shape. May be negative; callers should NOT wrap.
 pub(crate) fn top_centre_offset(shape: RingShape) -> f64 {

@@ -11,6 +11,14 @@ on:
       - 'Cargo.lock'
       - 'deny.toml'
       - '.github/workflows/security.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+      - '.github/workflows/security.yml'
+    types: [opened, synchronize, reopened]
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,7 +27,7 @@ jobs:
   security-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

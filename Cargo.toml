@@ -16,6 +16,7 @@ cairo-rs = { version = "0.20", default-features = false, features = ["png"] }
 gdk-pixbuf = { version = "0.20", default-features = false, features = ["v2_40"] }
 pangocairo = { version = "0.20" }
 clap = { version = "4.6", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+clap_complete = { version = "4.6", default-features = false }
 toml = { version = "1.1", default-features = false, features = ["parse", "display", "serde"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 zeroize = "1.8"
@@ -25,11 +26,9 @@ whoami = "1.6"
 zbus = { version = "5.14", default-features = false, features = ["tokio"] }
 mpris = "2.0"
 tokio = { version = "1.51", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
-rand = { version = "0.10" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-    fastblur = "0.1"
-    pam-client = "0.5"
+pam-client = "0.5"
     calloop = "0.13"
     xkbcommon = "0.7"
     calloop-wayland-source = "0.3"

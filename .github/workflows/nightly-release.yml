@@ -14,9 +14,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - uses: ./.github/actions/deps
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Set version
         id: version
@@ -26,10 +32,19 @@ jobs:
           VERSION=$(grep -m1 '^version =' Cargo.toml | cut -d'"' -f2)
           echo "VERSION=${VERSION}-nightly.$DATE.$SHA" >> $GITHUB_OUTPUT
 
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustlock-${{ steps.version.outputs.VERSION }}
+          path: target/release/rustlock
+
       - name: Create nightly release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: nightly-${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ steps.version.outputs.VERSION }}
           name: Nightly Build ${{ steps.version.outputs.VERSION }}
           prerelease: true
           generate_release_notes: true

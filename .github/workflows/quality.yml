@@ -14,7 +14,7 @@ jobs:
   quality-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/deps
 
@@ -30,9 +30,6 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
-
-      - name: Run unit tests (default features)
-        run: cargo test --quiet
 
       - name: Run unit tests (all features)
         run: cargo test --all-features --quiet

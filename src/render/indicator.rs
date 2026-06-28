@@ -85,9 +85,8 @@ impl Renderer {
         }
 
         if self.peeking {
-            log::debug!("draw_password_display: PEEKING text ({} chars)", count);
             // Draw each character at the same ring-perimeter positions as dots
-            self.context.set_font_size(11.0);
+            self.context.set_font_size(14.0);
             self.context.set_source_rgba(1.0, 1.0, 1.0, self.fade_alpha);
             for (i, ch) in self.password_display.chars().enumerate() {
                 let t = (i as f64 / max_dots) + t_offset;
@@ -117,9 +116,16 @@ impl Renderer {
             }
         }
 
-        // Cursor indicator (shared between peek and dot modes)
+        // Cursor indicator (shared between peek and dot modes).
         if self.fade_alpha > 0.0 {
-            let cursor_t = ((self.cursor_position as f64 - 0.5) / max_dots) + t_offset;
+            // At position 0, place the cursor squarely at the first-dot position
+            // (t_offset) instead of subtracting 0.5, which would push t negative
+            // and cause perimeter_point to wrap it to the far end of the ring.
+            let cursor_t = if self.cursor_position == 0 {
+                t_offset
+            } else {
+                ((self.cursor_position as f64 - 0.5) / max_dots) + t_offset
+            };
             let (cx, cy) =
                 ring_shape::perimeter_point(center_x, center_y, dot_radius, shape, cursor_t);
             let dx = cx - center_x;
