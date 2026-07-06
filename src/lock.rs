@@ -362,19 +362,25 @@ impl LockManager {
         event: KeyEvent,
         modifiers: smithay_client_toolkit::seat::keyboard::Modifiers,
     ) -> Option<InputAction> {
+        // Feed the event to EVERY surface so all outputs stay in sync. Returning
+        // early on the first non-empty SubmitPassword would leave the other
+        // outputs' input handlers holding a stale password buffer, so their
+        // indicator rings keep displaying old password dots after submit while
+        // the active output resets — desynced rings on the inactive screens.
+        let mut submit = None;
         let mut action = None;
         for surface in &mut self.surfaces {
             if let Some(a) = surface.handle_key_event(event.clone(), modifiers) {
                 if let crate::input::InputAction::SubmitPassword(p) = &a {
-                    if !p.is_empty() {
-                        return Some(a);
+                    if !p.is_empty() && submit.is_none() {
+                        submit = Some(a);
                     }
                 } else {
                     action = Some(a);
                 }
             }
         }
-        action
+        submit.or(action)
     }
 
     pub fn set_ctrl_held(&mut self, held: bool) {
