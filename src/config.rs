@@ -177,7 +177,7 @@ pub struct Config {
     #[arg(long, default_value = "0.2")]
     pub fade_in: f32,
 
-    #[arg(long, default_value = "login")]
+    #[arg(long, default_value = "rustlock")]
     pub pam_service: String,
 
     #[arg(long)]
