@@ -1,6 +1,7 @@
 mod auth;
 mod config;
 mod effects;
+mod fingerprint;
 mod input;
 mod lock;
 mod render;
@@ -183,6 +184,30 @@ impl WaylandLock {
                 for surface in &mut lock_manager.surfaces {
                     surface.show_wrong_password();
                 }
+            }
+        }
+    }
+
+    fn handle_fingerprint(&mut self, event: fingerprint::FingerprintEvent) {
+        match event {
+            fingerprint::FingerprintEvent::Match => {
+                log::info!("✅ Fingerprint matched");
+                self.handle_auth_result(true);
+            }
+            fingerprint::FingerprintEvent::NoMatch => {
+                log::info!("Fingerprint did not match");
+                // Feedback only: unlike a wrong password this must not touch a
+                // password check that may be in progress.
+                if self.auth_pending_seq.is_none() {
+                    if let Ok(mut lock_manager) = self.lock_manager.lock() {
+                        for surface in &mut lock_manager.surfaces {
+                            surface.show_wrong_password();
+                        }
+                    }
+                }
+            }
+            fingerprint::FingerprintEvent::Disabled => {
+                log::info!("Fingerprint disabled after too many failed attempts");
             }
         }
     }
@@ -1055,6 +1080,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     state.session_lock = Some(session_lock);
+
+    // Fingerprint alongside the password, only once the session is locked.
+    if state.config.fingerprint {
+        let fingerprint_rx = fingerprint::spawn(state.config.fingerprint_max_attempts);
+        event_loop
+            .handle()
+            .insert_source(fingerprint_rx, |event, _, state| {
+                if let calloop::channel::Event::Msg(event) = event {
+                    state.handle_fingerprint(event);
+                }
+            })?;
+    }
 
     while !state.exit && !state.ctrlc_exit.load(std::sync::atomic::Ordering::SeqCst) {
         event_loop.dispatch(Duration::from_millis(16), &mut state)?;
