@@ -1,3 +1,5 @@
+| `--fingerprint` | `false` | Also unlock with an enrolled fingerprint (see [Fingerprint](#fingerprint)) |
+| `--fingerprint-max-attempts <N>` | `3` | Fingers that do not match before only the password unlocks |
 # 🔒 RustLock
 
 [![License](https://img.shields.io/badge/license-GPL-3.0-blue.svg)](https://github.com/yourusername/rustlock/blob/main/LICENSE)
@@ -44,6 +46,7 @@ A high-performance Wayland screen locker written in Rust, inspired by `swaylock-
   - Custom background image support
 - 🔐 **Authentication**:
   - PAM-based authentication
+  - Optional fingerprint unlock through fprintd, alongside the password (whichever comes first)
   - Configurable grace period (any key press within N seconds unlocks without password)
 - 🎯 **Customization**:
   - Multiple ring shapes: circle, square, diamond, hexagon, pill
@@ -175,6 +178,22 @@ Options can be provided via command line or a configuration file at `~/.config/r
 | `--log-path <PATH>` | — | Path for log file (enables file logging, overrides `--log-file` default path) |
 
 ---
+
+### Fingerprint
+
+With `--fingerprint` (or `fingerprint = true` in the config file), rustlock talks to
+[fprintd](https://fprint.freedesktop.org/) over D-Bus while the screen is locked:
+touching the sensor with an enrolled finger unlocks, and typing the password still
+works at any time. A finger that does not match shows the wrong-password feedback;
+after `--fingerprint-max-attempts` of them only the password unlocks until the next
+lock. The sensor is claimed again after resuming from suspend.
+
+Requirements: fprintd running with at least one enrolled finger (`fprintd-enroll`).
+fprintd only allows verification from the active local session, which is where a
+screen locker runs.
+
+The PAM service should stay password only: if it includes `pam_fprintd`, pressing
+Enter waits for a finger before checking the password.
 
 ## 📦 Installation
 

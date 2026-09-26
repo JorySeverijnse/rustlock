@@ -199,6 +199,14 @@ pub struct Config {
     #[arg(long, default_value = "10000")]
     pub auth_timeout: u64,
 
+    /// Also unlock with an enrolled fingerprint (fprintd), alongside the password
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    pub fingerprint: bool,
+
+    /// Fingers that do not match before only the password unlocks
+    #[arg(long, default_value = "3")]
+    pub fingerprint_max_attempts: u32,
+
     #[arg(long, action = clap::ArgAction::SetTrue)]
     pub show_media: bool,
 
@@ -390,6 +398,21 @@ mod tests {
     fn test_auth_timeout_default() {
         let config = Config::parse_from(["test"]);
         assert_eq!(config.auth_timeout, 10000);
+    }
+
+    #[test]
+    fn test_fingerprint_defaults() {
+        let config = Config::parse_from(["test"]);
+        assert!(!config.fingerprint);
+        assert_eq!(config.fingerprint_max_attempts, 3);
+    }
+
+    #[test]
+    fn test_fingerprint_cli() {
+        let config =
+            Config::parse_from(["test", "--fingerprint", "--fingerprint-max-attempts", "5"]);
+        assert!(config.fingerprint);
+        assert_eq!(config.fingerprint_max_attempts, 5);
     }
 
     #[test]
